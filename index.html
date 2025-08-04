@@ -94,12 +94,20 @@ async function loadMonthlyTotal() {
   const isLeaf = !subtree || Object.keys(subtree).length === 0;
   const actualDepth = isLeaf ? selectedPath.length - 1 : selectedPath.length;
 
-  const genrePathJa = selectedPath.slice(0, actualDepth).join(">");
-  const csvBaseName = genreMapJaToEn[genrePathJa];
+  
+  let csvBaseName = null;
+  for (let i = selectedPath.length; i > 0; i--) {
+    const trialPath = selectedPath.slice(0, i).join(">");
+    if (genreMapJaToEn[trialPath]) {
+      csvBaseName = genreMapJaToEn[trialPath];
+      break;
+    }
+  }
   if (!csvBaseName) {
-    alert("対応するCSVファイル名が見つかりませんでした：" + genrePathJa);
+    alert("対応するCSVファイル名が見つかりませんでした：" + selectedPath.join(">"));
     return;
   }
+
 
   const months = [];
   const [sy, sm] = startMonth.split("-").map(Number);
