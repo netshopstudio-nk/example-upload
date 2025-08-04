@@ -131,12 +131,24 @@ async function loadMonthlyTotal() {
       const rows = text.trim().split("\n").slice(1);
       for (const row of rows) {
         const [name, salesStr] = row.split(",");
-        if (!name.trim().startsWith(genrePathJa)) continue;
-        const parts = name.trim().split(">");
+        
+        const prefix = selectedPath.join(">");
+        const fullPath = prefix + ">" + name.trim();
+        if (!fullPath.startsWith(prefix)) continue;
+        const parts = fullPath.split(">");
         if (parts.length < actualDepth) continue;
 
         const bucketKey = parts.slice(0, actualDepth).join(">");
         const sales = parseFloat(salesStr || 0);
+        if (!buckets[bucketKey]) buckets[bucketKey] = 0;
+        buckets[bucketKey] += sales;
+
+        const childKey = parts.slice(0, actualDepth + 1).join(">");
+        if (parts.length > actualDepth) {
+          if (!subCounts[bucketKey]) subCounts[bucketKey] = new Set();
+          subCounts[bucketKey].add(childKey);
+        }
+
         if (!buckets[bucketKey]) buckets[bucketKey] = 0;
         buckets[bucketKey] += sales;
 
