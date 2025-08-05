@@ -3,89 +3,77 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア　ver4.0</title>
+  <title>ジャンル別CSVビューア（ドリルダウン）ver.4.1</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    select, button { margin: 0.5rem; padding: 0.4rem; }
+    #output { margin-top: 2rem; }
+  </style>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア　ver4.0</h1>
-  <label>ジャンル:</label>
-  <select id="genre-select"></select>
-  <br />
-  <label>開始月:</label>
-  <input type="month" id="start-month" />
-  <label>終了月:</label>
-  <input type="month" id="end-month" />
+  <h1>ジャンル別CSVビューア（ドリルダウン）ver.4.1</h1>
+  <div id="genreSelects"></div>
+  <label>開始月: </label><input type="month" id="startMonth">
+  <label>終了月: </label><input type="month" id="endMonth">
   <button onclick="loadData()">表示</button>
 
   <div id="output"></div>
 
   <script src="./genre_map.full.js"></script>
   <script>
-    const genreTreeUrl = "./genre_tree_merged.json";
-    const genreSelect = document.getElementById("genre-select");
-    let genreTree = null;
+    let genreTree = {};
+    let selectedPath = [];
 
-    async function initializeApp() {
-      try {
-        const response = await fetch(genreTreeUrl);
-        genreTree = await response.json();
-        if (!Array.isArray(genreTree) && typeof genreTree === 'object') {
-          genreTree = [genreTree];
-        }
-        populateGenreSelect();
-      } catch (error) {
-        console.error("ジャンルデータの読み込みに失敗しました", error);
-        document.getElementById("output").innerText = "ジャンルデータの読み込みに失敗しました";
-      }
-    }
+    fetch('genre_tree_merged.json')
+      .then(res => res.json())
+      .then(data => {
+        genreTree = data;
+        renderSelectUI(genreTree, document.getElementById("genreSelects"));
+      });
 
-    function populateGenreSelect() {
-      genreSelect.innerHTML = "";
-      const flatGenres = [];
-
-      function traverse(node, path = []) {
-        for (const key in node) {
-          const newPath = [...path, key];
-          if (Object.keys(node[key]).length === 0) {
-            flatGenres.push(newPath.join(">"));
-          } else {
-            traverse(node[key], newPath);
-          }
-        }
+    function renderSelectUI(tree, container, path = []) {
+      // 入れ替え処理
+      while (container.children.length > path.length) {
+        container.removeChild(container.lastChild);
       }
 
-      for (const tree of genreTree) {
-        traverse(tree);
-      }
-
-      for (const genre of flatGenres) {
+      const select = document.createElement("select");
+      select.innerHTML = '<option value="">選択してください</option>';
+      for (const key in tree) {
+        const hasChildren = Object.keys(tree[key]).length > 0;
         const option = document.createElement("option");
-        option.value = genre;
-        option.textContent = genre;
-        genreSelect.appendChild(option);
+        option.value = key;
+        option.textContent = hasChildren ? key + ' ▶' : key;
+        select.appendChild(option);
       }
+
+      select.onchange = () => {
+        const selected = select.value.replace(/ ▶$/, '');
+        selectedPath = [...path, selected];
+
+        // 次の階層へ
+        const nextTree = tree[selected];
+        renderSelectUI(nextTree, container, selectedPath);
+      };
+
+      container.appendChild(select);
     }
 
     async function loadData() {
-      const selectedGenre = genreSelect.value;
-      const startMonth = document.getElementById("start-month").value;
-      const endMonth = document.getElementById("end-month").value;
+      const startMonth = document.getElementById("startMonth").value;
+      const endMonth = document.getElementById("endMonth").value;
+      const output = document.getElementById("output");
+      output.innerHTML = "";
 
-      if (!selectedGenre || !startMonth || !endMonth) {
-        alert("ジャンル・期間をすべて選択してください");
+      if (!startMonth || !endMonth || selectedPath.length === 0) {
+        output.innerHTML = "<p style='color:red;'>ジャンル・月を正しく選択してください。</p>";
         return;
       }
 
-      const genreParts = selectedGenre.split(">");
-      if (genreParts.length < 2) {
-        alert("データ取得に必要な階層が不足しています");
-        return;
-      }
-
-      const parentGenre = genreParts.slice(0, -1).join(">");
-      const fileKey = window.genreMap[parentGenre];
+      const parentPath = selectedPath.slice(0, -1).join(">");
+      const fileKey = window.genreMap[parentPath];
       if (!fileKey) {
-        console.warn("対応するCSVファイル名が見つかりませんでした：" + parentGenre);
-        document.getElementById("output").innerText = "CSVファイルが見つかりませんでした：" + parentGenre;
+        output.innerHTML = "<p style='color:red;'>対応するCSVファイルが見つかりませんでした：" + parentPath + "</p>";
         return;
       }
 
@@ -100,33 +88,32 @@
         const fileName = `./data/${fileKey}_${yyyymm}.csv`;
 
         try {
-          const response = await fetch(fileName);
-          if (!response.ok) throw new Error("ファイルなし");
-          const text = await response.text();
+          const res = await fetch(fileName);
+          if (!res.ok) throw new Error("missing");
+          const text = await res.text();
           const lines = text.trim().split("\n");
           for (const line of lines) {
             const [name, value] = line.split(",");
             if (!results[name]) results[name] = 0;
             results[name] += parseInt(value);
           }
-        } catch (e) {
+        } catch {
           console.warn("読み込み失敗：" + fileName);
         }
       }
 
-      displayTable(results);
-    }
-
-    function displayTable(data) {
-      const output = document.getElementById("output");
-      output.innerHTML = "";
+      if (Object.keys(results).length === 0) {
+        output.innerHTML = "<p style='color:red;'>データが見つかりませんでした。</p>";
+        return;
+      }
 
       const table = document.createElement("table");
+      table.border = "1";
       const header = document.createElement("tr");
       header.innerHTML = "<th>ジャンル名</th><th>金額</th>";
       table.appendChild(header);
 
-      for (const [name, value] of Object.entries(data)) {
+      for (const [name, value] of Object.entries(results)) {
         const row = document.createElement("tr");
         row.innerHTML = `<td>${name}</td><td>${value.toLocaleString()}</td>`;
         table.appendChild(row);
@@ -134,8 +121,6 @@
 
       output.appendChild(table);
     }
-
-    initializeApp();
   </script>
 </body>
 </html>
