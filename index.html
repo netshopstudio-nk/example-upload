@@ -1,110 +1,49 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア</title>
-  <style>
-    body { font-family: sans-serif; }
-    select, button { margin: 5px; }
-    table { margin-top: 15px; border-collapse: collapse; }
-    th, td { border: 1px solid #ccc; padding: 5px; }
-  </style>
+  <title>ジャンル選択ビューア</title>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア</h1>
-  <div>
-    ジャンルを選択:
-    <select id="genreSelect"></select>
-    年月を選択:
-    <select id="monthSelect"></select>
-  </div>
+  <h1>ジャンル選択ビューア</h1>
+  <div id="genreSelects"></div>
+  <div id="result"></div>
 
-  <table>
-    <thead>
-      <tr><th>ジャンル名</th><th>金額</th></tr>
-    </thead>
-    <tbody id="resultBody"></tbody>
-  </table>
+  <script type="module">
+    import genreMap from './genre_map.final.js';
+    import genreTree from './genre_tree_merged.json' assert { type: "json" };
 
-  <script>
-    const genreSelect = document.getElementById("genreSelect");
-    const monthSelect = document.getElementById("monthSelect");
-    const resultBody = document.getElementById("resultBody");
+    function renderSelectUI(tree, container) {
+      container.innerHTML = '';
+      const select = document.createElement('select');
+      const defaultOption = document.createElement('option');
+      defaultOption.text = 'ジャンルを選択';
+      defaultOption.disabled = true;
+      defaultOption.selected = true;
+      select.appendChild(defaultOption);
 
-    // 年月セレクター生成
-    for (let y = 2022; y <= 2025; y++) {
-      for (let m = 1; m <= 12; m++) {
-        const ym = `${y}${m.toString().padStart(2, "0")}`;
-        const option = document.createElement("option");
-        option.value = ym;
-        option.text = `${y}年${m.toString().padStart(2, "0")}月`;
-        monthSelect.appendChild(option);
-      }
-    }
-
-    // ジャンルツリーを読み込み
-    fetch("genre_tree_merged.json")
-      .then((res) => res.json())
-      .then((tree) => {
-        const genres = [];
-        function traverse(node, path = []) {
-          const currentPath = [...path, node.name];
-          if (!node.children || node.children.length === 0) {
-            genres.push(currentPath.join(">"));
-          } else {
-            node.children.forEach((child) => traverse(child, currentPath));
-          }
-        }
-        tree.forEach((node) => traverse(node));
-        genres.forEach((g) => {
-          const opt = document.createElement("option");
-          opt.value = g;
-          opt.text = g;
-          genreSelect.appendChild(opt);
-        });
+      Object.keys(tree).forEach(key => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.text = key;
+        select.appendChild(option);
       });
 
-    // 表示処理
-    monthSelect.value = "202205"; // デフォルト月
-    genreSelect.addEventListener("change", loadCSV);
-    monthSelect.addEventListener("change", loadCSV);
+      select.addEventListener('change', () => {
+        const selected = select.value;
+        const resultDiv = document.getElementById('result');
+        const mapped = genreMap[selected] || '(未定義)';
+        resultDiv.textContent = `選択ジャンル: ${selected} → 英語ファイル名: ${mapped}`;
+      });
 
-    function loadCSV() {
-      const genre = genreSelect.value;
-      const month = monthSelect.value;
-
-      if (!genre || !month) return;
-
-      fetch("genre_map.js")
-        .then(res => res.text())
-        .then(script => {
-          eval(script); // genreMap が定義される
-          const en = genreMap[genre];
-          if (!en) {
-            alert("対応する英語ファイル名が見つかりません");
-            return;
-          }
-          const url = `data/${en}_${month}.csv`;
-          fetch(url)
-            .then((res) => {
-              if (!res.ok) throw new Error("CSV読み込み失敗");
-              return res.text();
-            })
-            .then((csv) => {
-              const lines = csv.trim().split("\n").slice(1); // ヘッダー除外
-              resultBody.innerHTML = "";
-              lines.forEach((line) => {
-                const [name, amount] = line.split(",");
-                const tr = document.createElement("tr");
-                tr.innerHTML = `<td>${name}</td><td>${amount}</td>`;
-                resultBody.appendChild(tr);
-              });
-            })
-            .catch(() => {
-              resultBody.innerHTML = `<tr><td colspan="2">データが見つかりませんでした</td></tr>`;
-            });
-        });
+      container.appendChild(select);
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('genreSelects');
+      renderSelectUI(genreTree, container);
+    });
   </script>
 </body>
 </html>
