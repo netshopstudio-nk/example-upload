@@ -1,86 +1,75 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ジャンル別売上ビューア ver3.9.5</title>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>ジャンル別売上ビューア ver3.9.6</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
-    select, button, input { margin: 0.5rem 0.5rem 0.5rem 0; }
-    canvas { max-width: 100%; height: auto; }
+    body { font-family: sans-serif; padding: 20px; }
+    select, button { margin: 5px; padding: 5px; }
+    h1 { font-size: 1.5em; }
   </style>
 </head>
 <body>
-  <h2>ジャンル別売上ビューア ver3.9.5</h2>
-
-  <label>ジャンル:
-    <select id="genreSelect"></select>
-  </label>
-
-  <label>開始月:
-    <input type="month" id="startMonth">
-  </label>
-
-  <label>終了月:
-    <input type="month" id="endMonth">
-  </label>
-
-  <button id="loadButton">表示</button>
-
+  <h1>ジャンル別売上ビューア ver3.9.6</h1>
+  <label>ジャンル: <select id="genreSelect"></select></label>
+  <label>開始月: <input type="month" id="startMonth"></label>
+  <label>終了月: <input type="month" id="endMonth"></label>
+  <button onclick="loadData()">表示</button>
   <div>
-    <button id="tableBtn">表</button>
-    <button id="barBtn">棒グラフ</button>
-    <button id="pieBtn">円グラフ</button>
+    <button onclick="showTable()">表</button>
+    <button onclick="showBarChart()">棒グラフ</button>
+    <button onclick="showPieChart()">円グラフ</button>
   </div>
+  <div id="output"></div>
 
-  <div id="tableContainer"></div>
-  <canvas id="barChart" style="display:none;"></canvas>
-  <canvas id="pieChart" style="display:none;"></canvas>
+  <script type="module">
+    import { genreMap } from './genre_map.full.js';
 
-  <script>
+    const genreTreeUrl = './genre_tree_merged.json';
     let genreTree = null;
-    let genreMap = null;
 
     async function initializeApp() {
-      try {
-        const [treeRes, mapRes] = await Promise.all([
-          fetch("./genre_tree_merged.json"),
-          fetch("./genre_map.full.js")
-        ]);
-
-        genreTree = await treeRes.json();
-
-        // JSファイルとして読み込んでいるので script を新たに読み込み
-        const script = document.createElement("script");
-        script.src = "./genre_map.full.js";
-        script.onload = () => {
-          genreMap = window.genreMap || {};
-          populateGenreSelect();
-        };
-        document.head.appendChild(script);
-      } catch (err) {
-        console.error("初期化エラー:", err);
-      }
+      const res = await fetch(genreTreeUrl);
+      genreTree = await res.json();
+      populateGenreSelect();
     }
 
     function populateGenreSelect() {
-      const select = document.getElementById("genreSelect");
-      select.innerHTML = "";
-
-      function buildOptions(tree, path = []) {
-        for (const key in tree) {
+      const select = document.getElementById('genreSelect');
+      select.innerHTML = '';
+      function traverse(node, path = []) {
+        Object.keys(node).forEach(key => {
           const newPath = [...path, key];
-          const option = document.createElement("option");
-          option.value = newPath.join("> ");
-          option.textContent = newPath.join(" > ");
+          const option = document.createElement('option');
+          option.value = newPath.join('>');
+          option.textContent = newPath.join(' > ');
           select.appendChild(option);
-          if (typeof tree[key] === "object") buildOptions(tree[key], newPath);
-        }
+          traverse(node[key], newPath);
+        });
       }
-      buildOptions(genreTree);
+      traverse(genreTree);
     }
+
+    async function loadData() {
+      const genrePath = document.getElementById('genreSelect').value;
+      const start = document.getElementById('startMonth').value;
+      const end = document.getElementById('endMonth').value;
+      const filename = genreMap[genrePath];
+      const output = document.getElementById('output');
+      output.innerHTML = '';
+
+      if (!filename) {
+        output.textContent = '対応するCSVファイル名が見つかりませんでした：' + genrePath;
+        return;
+      }
+
+      output.textContent = `「${genrePath}」の売上データを表示します（CSVファイル名: ${filename}）`;
+    }
+
+    function showTable() { alert('表を表示（仮）'); }
+    function showBarChart() { alert('棒グラフを表示（仮）'); }
+    function showPieChart() { alert('円グラフを表示（仮）'); }
 
     initializeApp();
   </script>
