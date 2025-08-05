@@ -1,161 +1,108 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>ジャンル別CSVビューア</title>
-  <script type="module" src="genre_map.js"></script>
+  <style>
+    body { font-family: sans-serif; }
+    select, button { margin: 5px; }
+    table { margin-top: 15px; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 5px; }
+  </style>
 </head>
 <body>
   <h1>ジャンル別CSVビューア</h1>
+  <div>
+    ジャンルを選択:
+    <select id="genreSelect"></select>
+    年月を選択:
+    <select id="monthSelect"></select>
+  </div>
 
-  <label for="genreSelect">ジャンルを選択:</label>
-  <select id="genreSelect"></select>
-
-  <label for="monthSelect">年月を選択:</label>
-  <select id="monthSelect">
-    <option value="202205">2022年05月</option>
-    <option value="202206">2022年06月</option>
-    <option value="202207">2022年07月</option>
-    <option value="202208">2022年08月</option>
-    <option value="202209">2022年09月</option>
-    <option value="202210">2022年10月</option>
-    <option value="202211">2022年11月</option>
-    <option value="202212">2022年12月</option>
-    <option value="202301">2023年01月</option>
-    <option value="202302">2023年02月</option>
-    <option value="202303">2023年03月</option>
-    <option value="202304">2023年04月</option>
-    <option value="202305">2023年05月</option>
-    <option value="202306">2023年06月</option>
-    <option value="202307">2023年07月</option>
-    <option value="202308">2023年08月</option>
-    <option value="202309">2023年09月</option>
-    <option value="202310">2023年10月</option>
-    <option value="202311">2023年11月</option>
-    <option value="202312">2023年12月</option>
-    <option value="202401">2024年01月</option>
-    <option value="202402">2024年02月</option>
-    <option value="202403">2024年03月</option>
-    <option value="202404">2024年04月</option>
-    <option value="202405">2024年05月</option>
-    <option value="202406">2024年06月</option>
-    <option value="202407">2024年07月</option>
-    <option value="202408">2024年08月</option>
-    <option value="202409">2024年09月</option>
-    <option value="202410">2024年10月</option>
-    <option value="202411">2024年11月</option>
-    <option value="202412">2024年12月</option>
-    <option value="202501">2025年01月</option>
-    <option value="202502">2025年02月</option>
-    <option value="202503">2025年03月</option>
-    <option value="202504">2025年04月</option>
-    <option value="202505">2025年05月</option>
-    <option value="202506">2025年06月</option>
-    <option value="202507">2025年07月</option>
-    <option value="202508">2025年08月</option>
-    <option value="202509">2025年09月</option>
-  </select>
-  <table id="dataTable" border="1">
+  <table>
     <thead>
-      <tr>
-        <th>ジャンル名</th>
-        <th>金額</th>
-      </tr>
+      <tr><th>ジャンル名</th><th>金額</th></tr>
     </thead>
-    <tbody></tbody>
+    <tbody id="resultBody"></tbody>
   </table>
 
-  <p id="message"></p>
+  <script>
+    const genreSelect = document.getElementById("genreSelect");
+    const monthSelect = document.getElementById("monthSelect");
+    const resultBody = document.getElementById("resultBody");
 
-  <script type="module">
-    import { genreMap } from './genre_map.js';
-
-    const genreSelect = document.getElementById('genreSelect');
-    const monthSelect = document.getElementById('monthSelect');
-    const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
-    const message = document.getElementById('message');
-
-    const genreTreeURL = "./genre_tree_merged.json";
-
-    fetch(genreTreeURL)
-      .then(response => response.json())
-      .then(data => {
-        populateGenreSelect(data);
-      });
-
-    function populateGenreSelect(genreTree) {
-      function traverse(node, path) {
-        const currentPath = path ? path + ">" + node.name : node.name;
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => traverse(child, currentPath));
-        } else {
-          const option = document.createElement("option");
-          option.value = currentPath;
-          option.text = currentPath;
-          genreSelect.appendChild(option);
-        }
+    // 年月セレクター生成
+    for (let y = 2022; y <= 2025; y++) {
+      for (let m = 1; m <= 12; m++) {
+        const ym = `${y}${m.toString().padStart(2, "0")}`;
+        const option = document.createElement("option");
+        option.value = ym;
+        option.text = `${y}年${m.toString().padStart(2, "0")}月`;
+        monthSelect.appendChild(option);
       }
-
-      genreSelect.innerHTML = "";
-      traverse(genreTree, "");
     }
 
-    genreSelect.addEventListener("change", loadMonthlyTotal);
-    monthSelect.addEventListener("change", loadMonthlyTotal);
-
-    function loadMonthlyTotal() {
-      const selectedGenre = genreSelect.value;
-      const selectedMonth = monthSelect.value;
-
-      if (!selectedGenre || !selectedMonth) return;
-
-      const genreParts = selectedGenre.split(">");
-      if (genreParts.length < 2) {
-        message.textContent = "選択されたジャンルは有効ではありません。";
-        return;
-      }
-
-      const fileGenre = genreParts.slice(0, -1).join(">");
-      const genreMapKey = genreMap[fileGenre];
-
-      if (!genreMapKey) {
-        message.textContent = "対応するCSVファイル名が見つかりませんでした：" + fileGenre;
-        return;
-      }
-
-      const csvFile = `https://netshopstudio-nk.github.io/example-upload/data/${genreMapKey}_${selectedMonth}.csv`;
-
-      fetch(csvFile)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error("CSVファイルの取得に失敗しました");
-          }
-          return response.text();
-        })
-        .then(text => {
-          const rows = text.trim().split("\n").slice(1);
-          const filtered = rows.map(line => {
-            const [genre, amount] = line.split(",");
-            return { genre: genre.trim(), amount: parseFloat(amount) };
-          }).filter(item => item.genre === genreParts[genreParts.length - 1]);
-
-          dataTable.innerHTML = "";
-
-          if (filtered.length > 0) {
-            filtered.forEach(item => {
-              const row = dataTable.insertRow();
-              const cell1 = row.insertCell(0);
-              const cell2 = row.insertCell(1);
-              cell1.textContent = item.genre;
-              cell2.textContent = item.amount.toLocaleString();
-            });
-            message.textContent = "";
+    // ジャンルツリーを読み込み
+    fetch("genre_tree_merged.json")
+      .then((res) => res.json())
+      .then((tree) => {
+        const genres = [];
+        function traverse(node, path = []) {
+          const currentPath = [...path, node.name];
+          if (!node.children || node.children.length === 0) {
+            genres.push(currentPath.join(">"));
           } else {
-            message.textContent = "該当ジャンルのデータが見つかりません。";
+            node.children.forEach((child) => traverse(child, currentPath));
           }
-        })
-        .catch(error => {
-          message.textContent = "CSVファイルの読み込みに失敗しました: " + error.message;
+        }
+        tree.forEach((node) => traverse(node));
+        genres.forEach((g) => {
+          const opt = document.createElement("option");
+          opt.value = g;
+          opt.text = g;
+          genreSelect.appendChild(opt);
+        });
+      });
+
+    // 表示処理
+    monthSelect.value = "202205"; // デフォルト月
+    genreSelect.addEventListener("change", loadCSV);
+    monthSelect.addEventListener("change", loadCSV);
+
+    function loadCSV() {
+      const genre = genreSelect.value;
+      const month = monthSelect.value;
+
+      if (!genre || !month) return;
+
+      fetch("genre_map.js")
+        .then(res => res.text())
+        .then(script => {
+          eval(script); // genreMap が定義される
+          const en = genreMap[genre];
+          if (!en) {
+            alert("対応する英語ファイル名が見つかりません");
+            return;
+          }
+          const url = `data/${en}_${month}.csv`;
+          fetch(url)
+            .then((res) => {
+              if (!res.ok) throw new Error("CSV読み込み失敗");
+              return res.text();
+            })
+            .then((csv) => {
+              const lines = csv.trim().split("\n").slice(1); // ヘッダー除外
+              resultBody.innerHTML = "";
+              lines.forEach((line) => {
+                const [name, amount] = line.split(",");
+                const tr = document.createElement("tr");
+                tr.innerHTML = `<td>${name}</td><td>${amount}</td>`;
+                resultBody.appendChild(tr);
+              });
+            })
+            .catch(() => {
+              resultBody.innerHTML = `<tr><td colspan="2">データが見つかりませんでした</td></tr>`;
+            });
         });
     }
   </script>
