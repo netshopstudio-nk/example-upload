@@ -2,86 +2,78 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>ジャンル選択ビューア ver3.3</title>
+  <meta charset="UTF-8">
+  <title>ジャンル選択ビューア（ver3.4）</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    select, input { margin: 5px; }
+    .error { color: red; }
+  </style>
+  <script src="genre_map.full.js"></script>
 </head>
 <body>
-    <h1>ジャンル選択ビューア（ver3.3）</h1>
-
-    <label for="startMonth">開始月（例：202205）:</label>
-    <input type="text" id="startMonth" placeholder="YYYYMM">
-    <label for="endMonth">終了月（例：202509）:</label>
-    <input type="text" id="endMonth" placeholder="YYYYMM">
-    <br><br>
-
-    <label for="genreSelect">ジャンルを選択:</label>
+  <h1>ジャンル選択ビューア（ver3.4）</h1>
+  <div>
+    開始月（例：202205）：<input type="text" id="startMonth" value="202205">
+    終了月（例：202509）：<input type="text" id="endMonth" value="202502">
+  </div>
+  <div>
+    ジャンルを選択:
     <select id="genreSelect">
-        <option value="">-- ジャンルを選んでください --</option>
+      <option value="">-- ジャンルを選んでください --</option>
     </select>
-    <br><br>
+  </div>
+  <button onclick="loadData()">表示</button>
+  <div id="result"></div>
 
-    <button onclick="loadData()">表示</button>
-    <pre id="output"></pre>
+  <script>
+    function populateGenres() {
+      const select = document.getElementById("genreSelect");
+      if (typeof genreMap !== "object") {
+        console.error("genreMap is not loaded correctly.");
+        return;
+      }
 
-    <script src="genre_map.full.fixed.js"></script>
-    <script>
-        function populateGenres() {
-            if (typeof genreMap !== 'undefined') {
-                const genreSelect = document.getElementById("genreSelect");
-                Object.keys(genreMap).forEach(japanese => {
-                    const option = document.createElement("option");
-                    option.value = genreMap[japanese];
-                    option.textContent = japanese;
-                    genreSelect.appendChild(option);
-                });
-            } else {
-                console.error("genreMap is not loaded correctly.");
-            }
+      const entries = Object.entries(genreMap).sort((a, b) => a[0].localeCompare(b[0]));
+      for (const [ja, en] of entries) {
+        const option = document.createElement("option");
+        option.value = en;
+        option.textContent = ja;
+        select.appendChild(option);
+      }
+    }
+
+    async function loadData() {
+      const genreKey = document.getElementById("genreSelect").value;
+      const startMonth = parseInt(document.getElementById("startMonth").value);
+      const endMonth = parseInt(document.getElementById("endMonth").value);
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "";
+
+      if (!genreKey || isNaN(startMonth) || isNaN(endMonth)) {
+        resultDiv.innerHTML = "<p class='error'>ジャンルと月を正しく指定してください。</p>";
+        return;
+      }
+
+      for (let ym = startMonth; ym <= endMonth; ) {
+        const url = `https://netshopstudio-nk.github.io/example-upload/data/${genreKey}_${ym}.csv`;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("データが見つかりませんでした");
+          const text = await res.text();
+          resultDiv.innerHTML += `<p>✅ ${ym}: データ取得成功</p>`;
+        } catch (e) {
+          resultDiv.innerHTML += `<p class='error'>❌ ${ym}: データが見つかりませんでした (${url})</p>`;
         }
 
-        async function loadData() {
-            const genre = document.getElementById("genreSelect").value;
-            const startMonth = document.getElementById("startMonth").value;
-            const endMonth = document.getElementById("endMonth").value;
+        let year = Math.floor(ym / 100), month = ym % 100;
+        month++;
+        if (month > 12) { month = 1; year++; }
+        ym = year * 100 + month;
+      }
+    }
 
-            if (!genre || !startMonth || !endMonth) {
-                document.getElementById("output").textContent = "すべての項目を入力してください。";
-                return;
-            }
-
-            let output = "";
-            for (let ym = parseInt(startMonth); ym <= parseInt(endMonth);) {
-                const url = `https://netshopstudio-nk.github.io/example-upload/data/${genre}_${ym}.csv`;
-                try {
-                    const res = await fetch(url);
-                    if (!res.ok) {
-                        output += `❌ ${ym}: データが見つかりませんでした (${url})
-`;
-                    } else {
-                        const text = await res.text();
-                        output += `✅ ${ym}: データ取得成功 (${url})
-`;
-                    }
-                } catch (e) {
-                    output += `⚠️ ${ym}: エラーが発生しました
-`;
-                }
-
-                // 月を進める
-                let year = Math.floor(ym / 100);
-                let month = ym % 100;
-                month++;
-                if (month > 12) {
-                    year++;
-                    month = 1;
-                }
-                ym = year * 100 + month;
-            }
-
-            document.getElementById("output").textContent = output;
-        }
-
-        window.onload = populateGenres;
-    </script>
+    window.onload = populateGenres;
+  </script>
 </body>
 </html>
