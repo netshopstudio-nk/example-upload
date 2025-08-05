@@ -1,182 +1,116 @@
+
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>ジャンル別売上ビューア ver5.0.2</title>
-  <script src="./genre_tree_merged.js"></script>
-  <script src="./genre_map.full.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 2rem; }
-    select, button { margin: 0.5rem; padding: 0.4rem; }
-    #output { margin-top: 2rem; }
-    .error { color: red; }
-    table { border-collapse: collapse; }
-    th, td { border: 1px solid #999; padding: 0.5em; }
-  </style>
+  <title>ジャンル別売上ビューア ver5.1</title>
 </head>
 <body>
-  <h1>ジャンル別売上ビューア ver5.0.2</h1>
+  <h1>ジャンル別売上ビューア ver5.1</h1>
+  <div id="genre-selectors"></div>
+  <button onclick="loadData()">表示</button>
+  <div id="error-message" style="color:red"></div>
 
-  <label for="startMonth">開始月: </label>
-  <input type="month" id="startMonth" value="2022-09">
-  <label for="endMonth">終了月: </label>
-  <input type="month" id="endMonth" value="2022-09">
-  <br>
-
-  <label>ジャンル選択: </label>
-  <select id="genreSelect1"></select>
-  <select id="genreSelect2" style="display:none;"></select>
-  <select id="genreSelect3" style="display:none;"></select>
-  <select id="genreSelect4" style="display:none;"></select>
-  <select id="genreSelect5" style="display:none;"></select>
-  <br>
-
-  <button id="loadBtn">表示</button>
-  <div id="output"></div>
-
+  <script src="genre_tree_merged.js"></script>
+  <script src="genre_map.full.js"></script>
   <script>
+    const genreTree = window.genreTreeMerged;
     const genreMap = window.genreMap;
-    const selects = [
-      document.getElementById("genreSelect1"),
-      document.getElementById("genreSelect2"),
-      document.getElementById("genreSelect3"),
-      document.getElementById("genreSelect4"),
-      document.getElementById("genreSelect5")
-    ];
 
-    function populateSelect(select, options) {
-      select.innerHTML = "<option value=''>選択してください</option>";
-      for (const key in options) {
-        const opt = document.createElement("option");
-        opt.value = key;
-        opt.textContent = key;
-        select.appendChild(opt);
-      }
-    }
-
-    function clearLowerSelects(index) {
-      for (let i = index + 1; i < selects.length; i++) {
-        selects[i].style.display = "none";
-        selects[i].innerHTML = "";
-      }
-    }
-
-    function getSelectedPath() {
-      return selects.map(s => s.value).filter(v => v);
-    }
-
-    function findNode(path) {
-      let node = window.genreTree;
-      for (const key of path) {
-        node = node?.[key];
-        if (!node) break;
-      }
-      return node;
-    }
-
-    function setupSelects() {
-      populateSelect(selects[0], window.genreTree);
-      selects[0].style.display = "inline";
-      selects.forEach((sel, idx) => {
-        sel.addEventListener("change", () => {
-          const path = getSelectedPath();
-          clearLowerSelects(idx);
-          const node = findNode(path);
-          if (node && typeof node === "object") {
-            const next = selects[idx + 1];
-            if (next) {
-              populateSelect(next, node);
-              next.style.display = "inline";
-            }
-          }
-        });
+    // 選択されたジャンルパス（セレクタから生成）
+    function getSelectedGenrePath() {
+      const selectors = document.querySelectorAll("#genre-selectors select");
+      const parts = [];
+      selectors.forEach(sel => {
+        if (sel.value) parts.push(sel.value);
       });
+      return parts.join(">");
     }
 
-    function getGenreMapKey(path) {
-      for (let i = path.length - 1; i > 0; i--) {
-        const upperPath = path.slice(0, i).join(">");
-        if (genreMap[upperPath]) return genreMap[upperPath];
+    // ★ 修正ポイント：最下層から1つずつ切り落として genreMap から探す
+    function findMatchingGenreKey(fullPath) {
+      const parts = fullPath.split(">");
+      while (parts.length > 0) {
+        const testKey = parts.join(">").trim();
+        if (genreMap[testKey]) return genreMap[testKey];
+        parts.pop();  // 最下層を1つずつ削除
       }
       return null;
     }
 
-    function getMonths(start, end) {
-      const [sy, sm] = start.split("-").map(Number);
-      const [ey, em] = end.split("-").map(Number);
-      const months = [];
-      for (let y = sy; y <= ey; y++) {
-        for (let m = 1; m <= 12; m++) {
-          if ((y == sy && m < sm) || (y == ey && m > em)) continue;
-          months.push(`${y}${m.toString().padStart(2, "0")}`);
-        }
-      }
-      return months;
-    }
+    function loadData() {
+      const genrePath = getSelectedGenrePath();
+      const fileKey = findMatchingGenreKey(genrePath);
 
-    async function fetchCsv(file) {
-      try {
-        const res = await fetch(file);
-        if (!res.ok) return null;
-        const text = await res.text();
-        return text.trim().split("\n").map(row => row.split(","));
-      } catch {
-        return null;
-      }
-    }
-
-    document.getElementById("loadBtn").addEventListener("click", async () => {
-      const output = document.getElementById("output");
-      output.innerHTML = "";
-
-      const path = getSelectedPath();
-      if (path.length === 0) {
-        output.innerHTML = "<div class='error'>ジャンルを選択してください。</div>";
-        return;
-      }
-
-      const fileKey = getGenreMapKey(path);
+      const msg = document.getElementById("error-message");
       if (!fileKey) {
-        output.innerHTML = `<div class='error'>対応するCSVファイル名が見つかりませんでした：${path.join(" > ")}</div>`;
+        msg.textContent = "❌ 対応するCSVファイル名が見つかりませんでした：" + genrePath;
         return;
       }
 
-      const months = getMonths(
-        document.getElementById("startMonth").value,
-        document.getElementById("endMonth").value
-      );
+      const filename = `./data/${fileKey}_202502.csv`; // 固定月
+      msg.textContent = `📁 探索ファイル名: ${filename}`;
+    }
 
-      const dataMap = new Map();
-      for (const month of months) {
-        const file = `./data/${fileKey}_${month}.csv`;
-        const rows = await fetchCsv(file);
-        if (!rows) continue;
-        for (const [name, value] of rows) {
-          const val = parseFloat(value);
-          if (!isNaN(val)) {
-            dataMap.set(name, (dataMap.get(name) || 0) + val);
-          }
-        }
+    // 初期表示：セレクトボックスの生成
+    function createSelectors() {
+      const container = document.getElementById("genre-selectors");
+      container.innerHTML = "";
+
+      let currentNode = genreTree;
+      for (let depth = 0; depth < 5; depth++) {
+        const select = document.createElement("select");
+        select.onchange = () => createSelectorsFromSelection();
+        container.appendChild(select);
+        break; // 初回は1つだけ表示
+      }
+      createSelectorsFromSelection(); // 初期化
+    }
+
+    function createSelectorsFromSelection() {
+      const container = document.getElementById("genre-selectors");
+      const selectors = container.querySelectorAll("select");
+
+      let currentNode = genreTree;
+      let path = [];
+
+      for (let i = 0; i < selectors.length; i++) {
+        const val = selectors[i].value;
+        path.push(val);
+        currentNode = currentNode[val] || {};
       }
 
-      if (dataMap.size === 0) {
-        output.innerHTML = "<div class='error'>該当データが見つかりませんでした。</div>";
-        return;
+      // 次のセレクタ作成
+      const nextDepth = selectors.length;
+      const children = Object.keys(currentNode);
+
+      // すでに次セレクタがある場合は削除
+      while (container.children.length > nextDepth) {
+        container.removeChild(container.lastChild);
       }
 
-      const table = document.createElement("table");
-      const header = table.insertRow();
-      header.innerHTML = "<th>ジャンル名</th><th>合計金額</th>";
+      if (children.length > 0) {
+        const nextSelect = document.createElement("select");
+        nextSelect.onchange = () => createSelectorsFromSelection();
+        const optionEmpty = document.createElement("option");
+        optionEmpty.value = "";
+        optionEmpty.textContent = "▼選択";
+        nextSelect.appendChild(optionEmpty);
 
-      for (const [genre, sum] of dataMap) {
-        const row = table.insertRow();
-        row.innerHTML = `<td>${genre}</td><td>${sum.toLocaleString()}</td>`;
+        children.forEach(child => {
+          const option = document.createElement("option");
+          option.value = child;
+          option.textContent = child;
+          nextSelect.appendChild(option);
+        });
+
+        container.appendChild(nextSelect);
       }
+    }
 
-      output.appendChild(table);
-    });
-
-    setupSelects();
+    window.onload = () => {
+      createSelectors();
+    };
   </script>
 </body>
 </html>
