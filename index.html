@@ -3,21 +3,29 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア（ドリルダウン）ver.4.1</title>
+  <title>ジャンル別CSVビューア（ドリルダウン+グラフ）ver4.2</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: sans-serif; margin: 2rem; }
     select, button { margin: 0.5rem; padding: 0.4rem; }
-    #output { margin-top: 2rem; }
+    table { border-collapse: collapse; margin-top: 2rem; }
+    th, td { border: 1px solid #ccc; padding: 6px 12px; text-align: left; }
+    #charts { display: flex; flex-direction: row; gap: 30px; margin-top: 40px; }
+    canvas { width: 400px; height: 400px; }
   </style>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア（ドリルダウン）ver.4.1</h1>
+  <h1>ジャンル別CSVビューア（ドリルダウン+グラフ）ver4.2</h1>
   <div id="genreSelects"></div>
   <label>開始月: </label><input type="month" id="startMonth">
   <label>終了月: </label><input type="month" id="endMonth">
   <button onclick="loadData()">表示</button>
 
   <div id="output"></div>
+  <div id="charts">
+    <canvas id="barChart"></canvas>
+    <canvas id="pieChart"></canvas>
+  </div>
 
   <script src="./genre_map.full.js"></script>
   <script>
@@ -32,7 +40,6 @@
       });
 
     function renderSelectUI(tree, container, path = []) {
-      // 入れ替え処理
       while (container.children.length > path.length) {
         container.removeChild(container.lastChild);
       }
@@ -50,8 +57,6 @@
       select.onchange = () => {
         const selected = select.value.replace(/ ▶$/, '');
         selectedPath = [...path, selected];
-
-        // 次の階層へ
         const nextTree = tree[selected];
         renderSelectUI(nextTree, container, selectedPath);
       };
@@ -64,6 +69,8 @@
       const endMonth = document.getElementById("endMonth").value;
       const output = document.getElementById("output");
       output.innerHTML = "";
+      document.getElementById("barChart").getContext("2d").clearRect(0,0,400,400);
+      document.getElementById("pieChart").getContext("2d").clearRect(0,0,400,400);
 
       if (!startMonth || !endMonth || selectedPath.length === 0) {
         output.innerHTML = "<p style='color:red;'>ジャンル・月を正しく選択してください。</p>";
@@ -81,7 +88,7 @@
       const end = new Date(endMonth + "-01");
       end.setMonth(end.getMonth() + 1);
 
-      const results = {};
+      const aggregate = {};
 
       for (let d = new Date(start); d < end; d.setMonth(d.getMonth() + 1)) {
         const yyyymm = d.toISOString().slice(0, 7).replace("-", "");
@@ -92,34 +99,86 @@
           if (!res.ok) throw new Error("missing");
           const text = await res.text();
           const lines = text.trim().split("\n");
-          for (const line of lines) {
-            const [name, value] = line.split(",");
-            if (!results[name]) results[name] = 0;
-            results[name] += parseInt(value);
+          const header = lines[0].split(",");
+          const idxGenre = header.indexOf("ジャンル名");
+          const idxAmount = header.indexOf("売上指数（千円）");
+          const idxShare = header.indexOf("シェア");
+
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(",");
+            const genre = cols[idxGenre]?.trim();
+            const amount = parseInt(cols[idxAmount]?.replace(/,/g, "") || "0");
+            const share = cols[idxShare]?.trim() || "0%";
+
+            if (!genre || isNaN(amount)) continue;
+            if (!aggregate[genre]) {
+              aggregate[genre] = { amount: 0, share: share };
+            }
+            aggregate[genre].amount += amount;
           }
         } catch {
           console.warn("読み込み失敗：" + fileName);
         }
       }
 
-      if (Object.keys(results).length === 0) {
+      if (Object.keys(aggregate).length === 0) {
         output.innerHTML = "<p style='color:red;'>データが見つかりませんでした。</p>";
         return;
       }
 
+      // 表表示
       const table = document.createElement("table");
-      table.border = "1";
-      const header = document.createElement("tr");
-      header.innerHTML = "<th>ジャンル名</th><th>金額</th>";
-      table.appendChild(header);
+      table.innerHTML = "<tr><th>ジャンル名</th><th>金額</th><th>シェア</th></tr>";
+      const labels = [], values = [], shares = [];
 
-      for (const [name, value] of Object.entries(results)) {
+      for (const [name, {amount, share}] of Object.entries(aggregate)) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td>${name}</td><td>${value.toLocaleString()}</td>`;
+        row.innerHTML = `<td>${name}</td><td>${amount.toLocaleString()}</td><td>${share}</td>`;
         table.appendChild(row);
+        labels.push(name);
+        values.push(amount);
+        shares.push(parseFloat(share.replace("%", "")));
       }
-
       output.appendChild(table);
+
+      // グラフ描画
+      const barCtx = document.getElementById("barChart").getContext("2d");
+      const pieCtx = document.getElementById("pieChart").getContext("2d");
+
+      new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '売上指数（千円）',
+            data: values,
+            backgroundColor: 'rgba(54, 162, 235, 0.5)'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: 'ジャンル別 売上（棒グラフ）' }
+          }
+        }
+      });
+
+      new Chart(pieCtx, {
+        type: 'pie',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: shares,
+            backgroundColor: labels.map((_, i) => `hsl(${i * 30 % 360}, 60%, 70%)`)
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: 'ジャンル構成比（円グラフ）' }
+          }
+        }
+      });
     }
   </script>
 </body>
