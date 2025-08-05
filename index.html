@@ -2,97 +2,108 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア ver3</title>
+    <meta charset="UTF-8">
+    <title>ジャンル別CSVビューア ver3.1</title>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア <small>ver3</small></h1>
+    <h1>ジャンル別CSVビューア <span style="font-size: small;">ver3.1</span></h1>
+    <label for="genreSelect">ジャンルを選択:</label>
+    <select id="genreSelect"></select>
 
-  <label for="genreSelect">ジャンルを選択:</label>
-  <select id="genreSelect"></select>
+    <label for="startMonth">開始年月:</label>
+    <select id="startMonth"></select>
+    <label for="endMonth">終了年月:</label>
+    <select id="endMonth"></select>
+    <button onclick="loadData()">表示</button>
 
-  <label for="startMonth">開始年月:</label>
-  <select id="startMonth"></select>
+    <table border="1">
+        <thead>
+            <tr><th>ジャンル名</th><th>金額</th></tr>
+        </thead>
+        <tbody id="resultTable">
+        </tbody>
+    </table>
 
-  <label for="endMonth">終了年月:</label>
-  <select id="endMonth"></select>
-
-  <button onclick="loadCSV()">表示</button>
-
-  <table border="1" id="csvTable">
-    <thead>
-      <tr><th>ジャンル名</th><th>金額</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
-  <script type="module">
-    import {{ genreMap }} from './genre_map.full.js';
-
+    <script src="genre_map.fixed.js"></script>
+    <script>
     const genreSelect = document.getElementById("genreSelect");
     const startMonth = document.getElementById("startMonth");
     const endMonth = document.getElementById("endMonth");
 
-    // 年月選択肢の生成
-    function populateMonths() {{
-      const startYear = 2022, endYear = 2025;
-      for (let y = startYear; y <= endYear; y++) {{
-        for (let m = 1; m <= 12; m++) {{
-          const ym = `${{y}}年${{("0"+m).slice(-2)}}月`;
-          const opt1 = new Option(ym, `${{y}}${{("0"+m).slice(-2)}}`);
-          const opt2 = new Option(ym, `${{y}}${{("0"+m).slice(-2)}}`);
-          startMonth.append(opt1.cloneNode(true));
-          endMonth.append(opt2.cloneNode(true));
-        }}
-      }}
-    }}
+    const generateMonthOptions = () => {
+        const start = new Date(2022, 4);  // 2022年5月
+        const end = new Date(2025, 8);    // 2025年9月
+        for (let d = new Date(start); d <= end; d.setMonth(d.getMonth() + 1)) {
+            const yyyymm = d.toISOString().slice(0, 7).replace("-", "年") + "月";
+            const opt = document.createElement("option");
+            opt.value = d.toISOString().slice(0, 7).replace("-", "");
+            opt.textContent = yyyymm;
+            startMonth.appendChild(opt.cloneNode(true));
+            endMonth.appendChild(opt);
+        }
+        startMonth.selectedIndex = 0;
+        endMonth.selectedIndex = endMonth.options.length - 1;
+    };
 
-    // ジャンルの選択肢を追加
-    function populateGenres() {{
-      Object.keys(genreMap).forEach(key => {{
-        const opt = new Option(key, genreMap[key]);
-        genreSelect.append(opt);
-      }});
-    }}
+    const populateGenres = () => {
+        for (const jp in window.genreMap) {
+            const opt = document.createElement("option");
+            opt.value = jp;
+            opt.textContent = jp;
+            genreSelect.appendChild(opt);
+        }
+    };
 
-    async function loadCSV() {{
-      const genre = genreSelect.value;
-      const startYM = startMonth.value;
-      const endYM = endMonth.value;
+    async function loadData() {
+        const genrePath = genreSelect.value;
+        const start = startMonth.value;
+        const end = endMonth.value;
+        const fileBase = window.genreMap[genrePath];
+        if (!fileBase) {
+            alert("該当ジャンルのファイルが定義されていません");
+            return;
+        }
 
-      const tbody = document.querySelector("#csvTable tbody");
-      tbody.innerHTML = "";
+        const rows = {};
+        const promises = [];
 
-      const promises = [];
-      const yms = [];
+        for (let yyyymm = start; yyyymm <= end; ) {
+            const url = `data/${fileBase}_${yyyymm}.csv`;
+            const p = fetch(url)
+                .then(res => res.ok ? res.text() : null)
+                .then(text => {
+                    if (!text) return;
+                    for (const line of text.trim().split("\n").slice(1)) {
+                        const [genre, amount] = line.split(",");
+                        rows[genre] = (rows[genre] || 0) + parseFloat(amount || 0);
+                    }
+                });
+            promises.push(p);
 
-      let s = parseInt(startYM), e = parseInt(endYM);
-      for (let ym = s; ym <= e; ym = ym % 100 === 12 ? (parseInt(ym / 100) + 1) * 100 + 1 : ym + 1) {{
-        yms.push(ym);
-      }}
+            // 月を進める処理
+            const y = parseInt(yyyymm.slice(0, 4), 10);
+            const m = parseInt(yyyymm.slice(4), 10);
+            const date = new Date(y, m);  // 翌月
+            const next = date.toISOString().slice(0, 7).replace("-", "");
+            if (next > end) break;
+            yyyymm = next;
+        }
 
-      for (const ym of yms) {{
-        const url = `./data/${{genre}}_${{ym}}.csv`;
-        promises.push(fetch(url)
-          .then(res => res.ok ? res.text() : null)
-          .then(data => {{
-            if (!data) return;
-            const rows = data.trim().split('\n').slice(1);
-            for (const row of rows) {{
-              const [name, amount] = row.split(",");
-              const tr = document.createElement("tr");
-              tr.innerHTML = `<td>${{name}}</td><td>${{amount}}</td>`;
-              tbody.append(tr);
-            }}
-          }})
-          .catch(err => console.warn(`Error loading ${{url}}`, err)));
-      }}
+        await Promise.all(promises);
 
-      await Promise.all(promises);
-    }}
+        const table = document.getElementById("resultTable");
+        table.innerHTML = "";
+        for (const [genre, amount] of Object.entries(rows)) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${genre}</td><td>${amount.toLocaleString()}</td>`;
+            table.appendChild(tr);
+        }
+    }
 
-    populateGenres();
-    populateMonths();
-  </script>
+    window.onload = () => {
+        generateMonthOptions();
+        populateGenres();
+    };
+    </script>
 </body>
 </html>
