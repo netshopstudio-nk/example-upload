@@ -3,21 +3,20 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ジャンル別売上ビューア ver5.1</title>
+  <title>ジャンル別売上ビューア - デバッグ版</title>
 </head>
 <body>
-  <h1>ジャンル別売上ビューア ver5.1</h1>
+  <h1>ジャンル別売上ビューア（デバッグログ付き）</h1>
   <div id="genre-selectors"></div>
   <button onclick="loadData()">表示</button>
   <div id="error-message" style="color:red"></div>
 
-  <script src="genre_tree_merged.js"></script>
-  <script src="genre_map.full.js"></script>
+  <script src="★修正最終版★genre_tree_merged.js"></script>
+  <script src="★修正最終版★genre_map.full.js"></script>
   <script>
     const genreTree = window.genreTreeMerged;
     const genreMap = window.genreMap;
 
-    // 選択されたジャンルパス（セレクタから生成）
     function getSelectedGenrePath() {
       const selectors = document.querySelectorAll("#genre-selectors select");
       const parts = [];
@@ -27,13 +26,12 @@
       return parts.join(">");
     }
 
-    // ★ 修正ポイント：最下層から1つずつ切り落として genreMap から探す
     function findMatchingGenreKey(fullPath) {
       const parts = fullPath.split(">");
       while (parts.length > 0) {
         const testKey = parts.join(">").trim();
         if (genreMap[testKey]) return genreMap[testKey];
-        parts.pop();  // 最下層を1つずつ削除
+        parts.pop();
       }
       return null;
     }
@@ -43,16 +41,21 @@
       const fileKey = findMatchingGenreKey(genrePath);
 
       const msg = document.getElementById("error-message");
+
+      console.log("🌿 選択ジャンルパス:", genrePath);
+      console.log("🧩 対応ファイルキー:", fileKey);
+      console.log("🗂 genreMapのキー一覧:", Object.keys(genreMap));
+
       if (!fileKey) {
-        msg.textContent = "❌ 対応するCSVファイル名が見つかりませんでした：" + genrePath;
+        msg.textContent = "❌ 対応するCSVファイル名が見つかりません：" + genrePath;
         return;
       }
 
-      const filename = `./data/${fileKey}_202502.csv`; // 固定月
-      msg.textContent = `📁 探索ファイル名: ${filename}`;
+      const filename = `./data/${fileKey}_202502.csv`;
+      console.log("📁 読み込もうとしているCSV:", filename);
+      msg.textContent = `📁 読み込み中: ${filename}`;
     }
 
-    // 初期表示：セレクトボックスの生成
     function createSelectors() {
       const container = document.getElementById("genre-selectors");
       container.innerHTML = "";
@@ -62,9 +65,9 @@
         const select = document.createElement("select");
         select.onchange = () => createSelectorsFromSelection();
         container.appendChild(select);
-        break; // 初回は1つだけ表示
+        break;
       }
-      createSelectorsFromSelection(); // 初期化
+      createSelectorsFromSelection();
     }
 
     function createSelectorsFromSelection() {
@@ -80,11 +83,9 @@
         currentNode = currentNode[val] || {};
       }
 
-      // 次のセレクタ作成
       const nextDepth = selectors.length;
       const children = Object.keys(currentNode);
 
-      // すでに次セレクタがある場合は削除
       while (container.children.length > nextDepth) {
         container.removeChild(container.lastChild);
       }
