@@ -3,124 +3,81 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ジャンル別CSVビューア ver.4.3.2</title>
+    <title>ジャンル別CSVビューア ver.4.3.3</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        .dropdown-container { margin-bottom: 10px; }
-        select { margin-right: 10px; }
-        .chart-container { margin-top: 30px; }
+        body {
+            font-family: sans-serif;
+        }
+        .genre {
+            margin-left: 20px;
+        }
+        .caret {
+            cursor: pointer;
+            user-select: none;
+        }
+        .nested {
+            display: none;
+        }
+        .active {
+            display: block;
+        }
     </style>
 </head>
 <body>
-    <h1>ジャンル別CSVビューア ver.4.3.2</h1>
+    <h1>ジャンル別CSVビューア ver.4.3.3</h1>
+    <div id="genreContainer"></div>
+    <br>
+    <label for="startMonth">開始月：</label>
+    <select id="startMonth"></select>
+    <label for="endMonth">終了月：</label>
+    <select id="endMonth"></select>
+    <button onclick="alert('検索処理は未実装です')">表示</button>
 
-    <div class="dropdown-container" id="genre-selectors"></div>
+    <script src="genre_tree_merged.js"></script>
+    <script>
+        function createTree(data, parent) {
+            Object.keys(data).forEach(key => {
+                const hasChildren = Object.keys(data[key]).length > 0;
+                const div = document.createElement('div');
+                div.classList.add('genre');
 
-    <div class="dropdown-container">
-        開始月:
-        <select id="start-month"></select>
-        終了月:
-        <select id="end-month"></select>
-        <button onclick="loadCSV()">表示</button>
-    </div>
+                if (hasChildren) {
+                    const caret = document.createElement('span');
+                    caret.textContent = '▶︎ ' + key;
+                    caret.classList.add('caret');
+                    caret.onclick = () => {
+                        caret.nextSibling.classList.toggle('active');
+                        caret.textContent = caret.textContent.startsWith('▶︎') ? '▼ ' + key : '▶︎ ' + key;
+                    };
+                    div.appendChild(caret);
 
-    <div id="table-container"></div>
-    <div class="chart-container">
-        <canvas id="barChart" width="800" height="400"></canvas>
-        <canvas id="pieChart" width="800" height="400"></canvas>
-    </div>
-
-    <script type="module">
-        import {{ genreMap }} from './genre_map.full.js';
-
-        const genreSelectorsDiv = document.getElementById('genre-selectors');
-        let currentSelectors = [];
-
-        function createGenreDropdown(level, options) {
-            const select = document.createElement('select');
-            select.innerHTML = '<option value="">選択してください</option>';
-            for (const key in options) {
-                const hasChildren = Object.keys(options[key]).length > 0;
-                const arrow = hasChildren ? '▶ ' : '';
-                const option = document.createElement('option');
-                option.value = key;
-                option.textContent = arrow + key;
-                select.appendChild(option);
-            }
-
-            select.onchange = () => {
-                while (currentSelectors.length > level + 1) {
-                    genreSelectorsDiv.removeChild(currentSelectors.pop());
+                    const nestedDiv = document.createElement('div');
+                    nestedDiv.classList.add('nested');
+                    createTree(data[key], nestedDiv);
+                    div.appendChild(nestedDiv);
+                } else {
+                    div.textContent = key;
                 }
-                const selected = select.value;
-                if (selected && options[selected]) {
-                    const nextDropdown = createGenreDropdown(level + 1, options[selected]);
-                    genreSelectorsDiv.appendChild(nextDropdown);
-                    currentSelectors.push(nextDropdown);
-                }
-            };
 
-            return select;
-        }
-
-        const rootDropdown = createGenreDropdown(0, genreMap);
-        genreSelectorsDiv.appendChild(rootDropdown);
-        currentSelectors.push(rootDropdown);
-
-        const startMonth = document.getElementById("start-month");
-        const endMonth = document.getElementById("end-month");
-        for (let y = 2022; y <= 2025; y++) {
-            for (let m = 1; m <= 12; m++) {
-                const ym = `${y}${String(m).padStart(2, '0')}`;
-                const label = `${y}年${String(m).padStart(2, '0')}月`;
-                const option = new Option(label, ym);
-                startMonth.appendChild(option.cloneNode(true));
-                endMonth.appendChild(option);
-            }
-        }
-        startMonth.value = "202301";
-        endMonth.value = "202301";
-
-        async function loadCSV() {
-            const selectedPath = currentSelectors.map(sel => sel.value).filter(Boolean);
-            if (selectedPath.length === 0) return;
-
-            const ymStart = startMonth.value;
-            const ymEnd = endMonth.value;
-            const genreKey = selectedPath[selectedPath.length - 1];
-            const fileName = genreKey + "_" + ymStart + ".csv";
-            const url = `./data/${fileName}`;
-
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error("ファイルが存在しません");
-                const csv = await response.text();
-                displayTable(csv);
-            } catch (e) {
-                document.getElementById("table-container").innerHTML =
-                    `<p style="color:red;">CSVファイルが見つかりませんでした：${selectedPath.join(" > ")}</p>`;
-            }
-        }
-
-        function displayTable(csvText) {
-            const rows = csvText.trim().split("\n").map(row => row.split(","));
-            const table = document.createElement("table");
-            table.border = "1";
-            rows.forEach((row, i) => {
-                const tr = document.createElement("tr");
-                row.forEach(cell => {
-                    const td = document.createElement(i === 0 ? "th" : "td");
-                    td.textContent = cell;
-                    tr.appendChild(td);
-                });
-                table.appendChild(tr);
+                parent.appendChild(div);
             });
-            const container = document.getElementById("table-container");
-            container.innerHTML = "";
-            container.appendChild(table);
         }
-    </script>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('genreContainer');
+            createTree(window.genreTree, container);
+
+            const startMonth = document.getElementById('startMonth');
+            const endMonth = document.getElementById('endMonth');
+            for (let y = 2022; y <= 2025; y++) {
+                for (let m = 1; m <= 12; m++) {
+                    const label = y + '年' + ('0' + m).slice(-2) + '月';
+                    const opt = new Option(label, y + ('0' + m).slice(-2));
+                    startMonth.appendChild(opt.cloneNode(true));
+                    endMonth.appendChild(opt.cloneNode(true));
+                }
+            }
+        });
+    </script>
 </body>
 </html>
