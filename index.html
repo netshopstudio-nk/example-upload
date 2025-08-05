@@ -3,10 +3,10 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ジャンル選択ビューア ver6.1</title>
+    <title>ジャンル選択ビューア ver6.2</title>
 </head>
 <body>
-    <h1>ジャンル選択ビューア ver6.1</h1>
+    <h1>ジャンル選択ビューア ver6.2</h1>
     <div id="genreSelectors"></div>
     <label for="start">開始年月:</label>
     <input type="month" id="start" value="2022-05">
@@ -20,42 +20,63 @@
     <script src="genre_tree_merged.js"></script>
     <script src="genre_map.full.js"></script>
 <script>
-function getCsvKeyFromPath(path) {
-  const labels = path.split('>');
-  const leaf = labels[labels.length - 1];
+// ▼ 置き換え：配列でパスを返す（末尾が深い階層）
+function getSelectedGenreSegments() {
+  const selects = document.querySelectorAll("#genreSelectors select");
+  return Array.from(selects).map(s => s.value).filter(Boolean);
+}
 
-  // 1) 完全一致（まれにフルパスで用意されているキー対策）
-  if (window.genreMap?.[path]) return window.genreMap[path];
+// ▼ 追加：パス候補を複数形で試して csvKey を解決
+function resolveCsvKey(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return null;
 
-  // 2) フルパスをアンダースコア連結（例: 食品_チーズ・乳製品_チーズ_ウォッシュ）
-  const fullUnderscore = labels.join('_');
-  if (window.genreMap?.[fullUnderscore]) return window.genreMap[fullUnderscore];
+  const candidates = [];
 
-  // 3) トップ階層を外してアンダースコア連結（例: チーズ・乳製品_チーズ_ウォッシュ）
-  const noTop = labels.slice(1).join('_');
-  if (window.genreMap?.[noTop]) return window.genreMap[noTop];
+  // 1) 完全一致（ > 連結 / _ 連結）
+  candidates.push(segments.join(">"));
+  candidates.push(segments.join("_"));
 
-  // 4) 葉ラベル単体（例: 豚肉, スープ, ウォッシュ など）
-  if (window.genreMap?.[leaf]) return window.genreMap[leaf];
+  // 2) 末尾優先の部分パス（長い方から順に試す）
+  for (let i = 1; i < segments.length; i++) {
+    const tail = segments.slice(i);
+    candidates.push(tail.join(">"));
+    candidates.push(tail.join("_"));
+  }
 
+  // 3) 最後のラベル単体（例：ウォッシュ / チーズ など）
+  candidates.push(segments[segments.length - 1]);
+
+  // 4) 簡易正規化（全角空白→半角、前後空白削除）も試す
+  const norm = s => s.replace(/\u3000/g, " ").trim();
+  const normalizedCandidates = [];
+  for (const c of candidates) {
+    const n = norm(c);
+    if (n !== c) normalizedCandidates.push(n);
+  }
+
+  for (const key of [...candidates, ...normalizedCandidates]) {
+    if (key in (window.genreMap || {})) return { keyTried: key, csvKey: window.genreMap[key] };
+  }
   return null;
 }
 
-function* ymRange(startYM, endYM) {
-  let y = parseInt(startYM.slice(0,4), 10);
-  let m = parseInt(startYM.slice(4,6), 10);
-  const yEnd = parseInt(endYM.slice(0,4), 10);
-  const mEnd = parseInt(endYM.slice(4,6), 10);
+// ▼ 追加：年越し対応の月イテレータ（YYYYMM 文字列を返す）
+function* iterateMonths(startYM, endYM) {
+  let y = parseInt(startYM.slice(0, 4), 10);
+  let m = parseInt(startYM.slice(4, 6), 10);
+  const yEnd = parseInt(endYM.slice(0, 4), 10);
+  const mEnd = parseInt(endYM.slice(4, 6), 10);
 
   while (y < yEnd || (y === yEnd && m <= mEnd)) {
-    yield `${y}${String(m).padStart(2, '0')}`;
+    yield String(y) + String(m).padStart(2, "0");
     m++;
     if (m === 13) { m = 1; y++; }
   }
 }
 
+// ▼ 置き換え：display 本体
 function display() {
-  const genrePath = getSelectedGenrePath();
+  const segments = getSelectedGenreSegments();
   const start = document.getElementById("startMonth").value;
   const end = document.getElementById("endMonth").value;
   const errorDiv = document.getElementById("errorMessage");
@@ -63,17 +84,24 @@ function display() {
   errorDiv.textContent = "";
   successDiv.textContent = "";
 
-  if (!genrePath) {
+  if (!segments.length) {
     errorDiv.textContent = "ジャンルを選択してください。";
     return;
   }
+  if (!start || !end) {
+    errorDiv.textContent = "開始月と終了月を指定してください。";
+    return;
+  }
 
-  const csvKey = getCsvKeyFromPath(genrePath);
-  console.log("選択ジャンルパス:", genrePath);
-  console.log("対応CSVファイル名キー:", csvKey);
+  // キー解決（中間ノード／末尾ラベルも可）
+  const resolved = resolveCsvKey(segments);
+  console.log("選択ジャンルパス（配列）:", segments);
+  console.log("解決結果:", resolved);
 
-  if (!csvKey) {
-    errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + genrePath;
+  if (!resolved) {
+    errorDiv.textContent =
+      "対応するCSVファイル名が見つかりません: " +
+      segments.join(" > ");
     return;
   }
 
@@ -81,10 +109,10 @@ function display() {
   const endYM = end.replace("-", "");
   const missing = [];
   const loaded = [];
-
   const promises = [];
-  for (const ym of ymRange(startYM, endYM)) {
-    const url = `data/${csvKey}_${ym}.csv`;
+
+  for (const ym of iterateMonths(startYM, endYM)) {
+    const url = `data/${resolved.csvKey}_${ym}.csv`;
     promises.push(
       fetch(url).then(res => {
         if (!res.ok) throw new Error(url);
@@ -95,9 +123,16 @@ function display() {
 
   Promise.all(promises).then(() => {
     if (missing.length > 0) {
-      errorDiv.textContent = "CSVファイルが見つかりません:\n" + missing.join("\n");
+      errorDiv.textContent = 
+        "CSVファイルが見つかりません:\n" + missing.join("\n");
+      if (loaded.length) {
+        successDiv.textContent =
+          "見つかったCSV:\n" + loaded.join("\n");
+      }
     } else {
-      successDiv.textContent = "すべてのCSVファイルが正常に見つかりました:\n" + loaded.join("\n");
+      successDiv.textContent =
+        `キー解決: 「${segments.join(" > ")}」 → 「${resolved.keyTried}」\n` +
+        "すべてのCSVファイルが正常に見つかりました:\n" + loaded.join("\n");
     }
   });
 }
