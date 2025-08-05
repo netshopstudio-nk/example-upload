@@ -2,116 +2,86 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア ver3.2</title>
+    <meta charset="UTF-8">
+    <title>ジャンル選択ビューア ver3.3</title>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア <span style="font-size: 0.7em;">ver3.2</span></h1>
-  <label>ジャンルを選択:
-    <select id="genreSelect"></select>
-  </label>
-  <label>開始年月:
-    <select id="startMonthSelect"></select>
-  </label>
-  <label>終了年月:
-    <select id="endMonthSelect"></select>
-  </label>
-  <button onclick="loadData()">表示</button>
+    <h1>ジャンル選択ビューア（ver3.3）</h1>
 
-  <table border="1">
-    <thead>
-      <tr><th>ジャンル名</th><th>金額</th></tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+    <label for="startMonth">開始月（例：202205）:</label>
+    <input type="text" id="startMonth" placeholder="YYYYMM">
+    <label for="endMonth">終了月（例：202509）:</label>
+    <input type="text" id="endMonth" placeholder="YYYYMM">
+    <br><br>
 
-  <script src="genre_map.full.js"></script>
-  <script>
-    const genreSelect = document.getElementById('genreSelect');
-    const startMonthSelect = document.getElementById('startMonthSelect');
-    const endMonthSelect = document.getElementById('endMonthSelect');
+    <label for="genreSelect">ジャンルを選択:</label>
+    <select id="genreSelect">
+        <option value="">-- ジャンルを選んでください --</option>
+    </select>
+    <br><br>
 
-    async function populateGenres() {
-      if (typeof genreMap !== 'object') {
-        console.error('genreMap is not loaded correctly.');
-        return;
-      }
-      const genres = Object.keys(genreMap).sort();
-      genres.forEach(genre => {
-        const option = document.createElement('option');
-        option.value = genre;
-        option.textContent = genre;
-        genreSelect.appendChild(option);
-      });
-    }
+    <button onclick="loadData()">表示</button>
+    <pre id="output"></pre>
 
-    function populateMonths() {
-      for (let year = 2022; year <= 2025; year++) {
-        for (let month = 1; month <= 12; month++) {
-          const value = `${year}${month.toString().padStart(2, '0')}`;
-          const label = `${year}年${month.toString().padStart(2, '0')}月`;
-
-          const startOpt = document.createElement('option');
-          startOpt.value = value;
-          startOpt.textContent = label;
-          startMonthSelect.appendChild(startOpt);
-
-          const endOpt = document.createElement('option');
-          endOpt.value = value;
-          endOpt.textContent = label;
-          endMonthSelect.appendChild(endOpt);
+    <script src="genre_map.full.fixed.js"></script>
+    <script>
+        function populateGenres() {
+            if (typeof genreMap !== 'undefined') {
+                const genreSelect = document.getElementById("genreSelect");
+                Object.keys(genreMap).forEach(japanese => {
+                    const option = document.createElement("option");
+                    option.value = genreMap[japanese];
+                    option.textContent = japanese;
+                    genreSelect.appendChild(option);
+                });
+            } else {
+                console.error("genreMap is not loaded correctly.");
+            }
         }
-      }
-    }
 
-    async function loadData() {
-      const genre = genreSelect.value;
-      const start = parseInt(startMonthSelect.value);
-      const end = parseInt(endMonthSelect.value);
-      const enBase = genreMap[genre];
+        async function loadData() {
+            const genre = document.getElementById("genreSelect").value;
+            const startMonth = document.getElementById("startMonth").value;
+            const endMonth = document.getElementById("endMonth").value;
 
-      if (!enBase) {
-        alert("選択されたジャンルに対応するファイルがありません。");
-        return;
-      }
+            if (!genre || !startMonth || !endMonth) {
+                document.getElementById("output").textContent = "すべての項目を入力してください。";
+                return;
+            }
 
-      const tableBody = document.getElementById("tableBody");
-      tableBody.innerHTML = "";
+            let output = "";
+            for (let ym = parseInt(startMonth); ym <= parseInt(endMonth);) {
+                const url = `https://netshopstudio-nk.github.io/example-upload/data/${genre}_${ym}.csv`;
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) {
+                        output += `❌ ${ym}: データが見つかりませんでした (${url})
+`;
+                    } else {
+                        const text = await res.text();
+                        output += `✅ ${ym}: データ取得成功 (${url})
+`;
+                    }
+                } catch (e) {
+                    output += `⚠️ ${ym}: エラーが発生しました
+`;
+                }
 
-      for (let date = start; date <= end; ) {
-        const url = `data/${enBase}_${date}.csv`;
+                // 月を進める
+                let year = Math.floor(ym / 100);
+                let month = ym % 100;
+                month++;
+                if (month > 12) {
+                    year++;
+                    month = 1;
+                }
+                ym = year * 100 + month;
+            }
 
-        try {
-          const response = await fetch(url);
-          if (!response.ok) {
-            console.warn("File not found:", url);
-            date = incrementMonth(date);
-            continue;
-          }
-          const text = await response.text();
-          const rows = text.trim().split("\n").slice(1);
-          for (const row of rows) {
-            const [name, value] = row.split(",");
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${name}</td><td>${parseInt(value).toLocaleString()}</td>`;
-            tableBody.appendChild(tr);
-          }
-        } catch (error) {
-          console.error("Error loading CSV:", url, error);
+            document.getElementById("output").textContent = output;
         }
-        date = incrementMonth(date);
-      }
-    }
 
-    function incrementMonth(yyyymm) {
-      const year = Math.floor(yyyymm / 100);
-      const month = yyyymm % 100;
-      const next = new Date(year, month);
-      return next.getFullYear() * 100 + (next.getMonth() + 1);
-    }
-
-    populateGenres();
-    populateMonths();
-  </script>
+        window.onload = populateGenres;
+    </script>
 </body>
 </html>
