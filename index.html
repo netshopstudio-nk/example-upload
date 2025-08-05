@@ -3,10 +3,10 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ジャンル選択ビューア ver6.0</title>
+    <title>ジャンル選択ビューア ver6.1</title>
 </head>
 <body>
-    <h1>ジャンル選択ビューア ver6.0</h1>
+    <h1>ジャンル選択ビューア ver6.1</h1>
     <div id="genreSelectors"></div>
     <label for="start">開始年月:</label>
     <input type="month" id="start" value="2022-05">
@@ -20,79 +20,38 @@
     <script src="genre_tree_merged.js"></script>
     <script src="genre_map.full.js"></script>
 <script>
-window.onload = () => {
-  if (!window.genreTree || typeof window.genreTree !== 'object') {
-    document.getElementById("errorMessage").innerText = "ジャンルツリーが読み込まれていません。";
-    return;
-  }
-  if (!window.genreMap || typeof window.genreMap !== 'object') {
-    document.getElementById("errorMessage").innerText = "ジャンル→CSVの対応表（genreMap）が読み込まれていません。";
-    return;
-  }
-  createSelectorsFromTree(window.genreTree);
-};
+function getCsvKeyFromPath(path) {
+  const labels = path.split('>');
+  const leaf = labels[labels.length - 1];
 
-function createSelectorsFromTree(tree) {
-  const container = document.getElementById("genreSelectors");
-  container.innerHTML = "";
-  const levels = [];
+  // 1) 完全一致（まれにフルパスで用意されているキー対策）
+  if (window.genreMap?.[path]) return window.genreMap[path];
 
-  function traverse(node, depth) {
-    if (!levels[depth]) {
-      const select = document.createElement("select");
-      select.dataset.depth = depth;
-      select.onchange = () => updateSelectors(depth, node);
-      container.appendChild(select);
-      levels[depth] = select;
-    }
-    const select = levels[depth];
-    select.innerHTML = '<option value="">--選択--</option>';
-    for (const key in node) {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = key;
-      select.appendChild(opt);
-    }
-  }
+  // 2) フルパスをアンダースコア連結（例: 食品_チーズ・乳製品_チーズ_ウォッシュ）
+  const fullUnderscore = labels.join('_');
+  if (window.genreMap?.[fullUnderscore]) return window.genreMap[fullUnderscore];
 
-  function updateSelectors(depth, node) {
-    for (let i = depth + 1; i < levels.length; i++) levels[i].remove();
-    levels.length = depth + 1;
+  // 3) トップ階層を外してアンダースコア連結（例: チーズ・乳製品_チーズ_ウォッシュ）
+  const noTop = labels.slice(1).join('_');
+  if (window.genreMap?.[noTop]) return window.genreMap[noTop];
 
-    const selected = levels[depth].value;
-    if (node[selected] && typeof node[selected] === 'object') {
-      traverse(node[selected], depth + 1);
-    }
-  }
+  // 4) 葉ラベル単体（例: 豚肉, スープ, ウォッシュ など）
+  if (window.genreMap?.[leaf]) return window.genreMap[leaf];
 
-  traverse(tree, 0);
+  return null;
 }
 
-function getSelectedGenrePath() {
-  const selects = document.querySelectorAll("#genreSelectors select");
-  return Array.from(selects).map(s => s.value).filter(v => v).join(">");
-}
+function* ymRange(startYM, endYM) {
+  let y = parseInt(startYM.slice(0,4), 10);
+  let m = parseInt(startYM.slice(4,6), 10);
+  const yEnd = parseInt(endYM.slice(0,4), 10);
+  const mEnd = parseInt(endYM.slice(4,6), 10);
 
-// ★ 追加: パスから genreMap 照合用の候補を作る
-function genreKeyCandidates(pathWithGt) {
-  const underscore = pathWithGt.replace(/>/g, "_");
-  const last = pathWithGt.split(">").pop() || "";
-  // 優先順: 完全一致(>) → 完全一致(_) → 末尾名だけ
-  return [pathWithGt, underscore, last];
-}
-
-// ★ 追加: 正しい月列挙（start: "YYYY-MM", end: "YYYY-MM"）
-function monthsBetween(start, end) {
-  const [sy, sm] = start.split("-").map(Number);
-  const [ey, em] = end.split("-").map(Number);
-  const res = [];
-  let y = sy, m = sm;
-  while (y < ey || (y === ey && m <= em)) {
-    res.push(String(y) + String(m).padStart(2, "0"));
+  while (y < yEnd || (y === yEnd && m <= mEnd)) {
+    yield `${y}${String(m).padStart(2, '0')}`;
     m++;
     if (m === 13) { m = 1; y++; }
   }
-  return res;
 }
 
 function display() {
@@ -108,43 +67,31 @@ function display() {
     errorDiv.textContent = "ジャンルを選択してください。";
     return;
   }
-  if (!start || !end) {
-    errorDiv.textContent = "開始月と終了月を指定してください。";
-    return;
-  }
-  if (start > end) {
-    errorDiv.textContent = "開始月が終了月より後になっています。";
-    return;
-  }
 
-  // ★ 修正: 3通りのキー候補で genreMap を引く
-  let csvKey = null;
-  for (const k of genreKeyCandidates(genrePath)) {
-    if (window.genreMap[k]) { csvKey = window.genreMap[k]; break; }
-  }
-
+  const csvKey = getCsvKeyFromPath(genrePath);
   console.log("選択ジャンルパス:", genrePath);
   console.log("対応CSVファイル名キー:", csvKey);
 
   if (!csvKey) {
-    errorDiv.textContent =
-      "対応するCSVファイル名が見つかりません: " + genrePath +
-      "\n（genreMap のキーは『" + genrePath.replace(/>/g, "_") + "』または末尾名『" + genrePath.split(">").pop() + "』で登録してください）";
+    errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + genrePath;
     return;
   }
 
-  // ★ 修正: 正しい月列挙でURLを作成
-  const yms = monthsBetween(start, end);
+  const startYM = start.replace("-", "");
+  const endYM = end.replace("-", "");
   const missing = [];
   const loaded = [];
 
-  const promises = yms.map(ym => {
+  const promises = [];
+  for (const ym of ymRange(startYM, endYM)) {
     const url = `data/${csvKey}_${ym}.csv`;
-    return fetch(url).then(res => {
-      if (!res.ok) throw new Error(url);
-      loaded.push(url);
-    }).catch(() => missing.push(url));
-  });
+    promises.push(
+      fetch(url).then(res => {
+        if (!res.ok) throw new Error(url);
+        loaded.push(url);
+      }).catch(() => missing.push(url))
+    );
+  }
 
   Promise.all(promises).then(() => {
     if (missing.length > 0) {
