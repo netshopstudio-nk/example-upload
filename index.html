@@ -1,141 +1,141 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>ジャンル選択ビューア ver6.2</title>
+  <meta charset="UTF-8">
+  <title>ジャンル別CSVビューア ver6.3</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    select, input, button { margin: 5px; padding: 5px; }
+    .message { margin-top: 20px; white-space: pre-wrap; }
+  </style>
 </head>
 <body>
-    <h1>ジャンル選択ビューア ver6.2</h1>
-    <div id="genreSelectors"></div>
-    <label for="start">開始年月:</label>
-    <input type="month" id="start" value="2022-05">
-    <label for="end">終了年月:</label>
-    <input type="month" id="end" value="2025-09">
-    <button onclick="display()">表示</button>
-    <p id="selectedGenrePath"></p>
-    <p id="csvFileName"></p>
-    <div id="output"></div>
+  <h2>ジャンル別CSVビューア ver6.3</h2>
+  <div id="genreSelectors"></div>
+  <label>開始月: <input type="month" id="startMonth"></label>
+  <label>終了月: <input type="month" id="endMonth"></label>
+  <button onclick="display()">ファイルを確認</button>
 
-    <script src="genre_tree_merged.js"></script>
-    <script src="genre_map.full.js"></script>
-<script>
-// ▼ 置き換え：配列でパスを返す（末尾が深い階層）
-function getSelectedGenreSegments() {
-  const selects = document.querySelectorAll("#genreSelectors select");
-  return Array.from(selects).map(s => s.value).filter(Boolean);
-}
+  <div class="message" id="errorMessage" style="color: red;"></div>
+  <div class="message" id="successMessage" style="color: green;"></div>
 
-// ▼ 追加：パス候補を複数形で試して csvKey を解決
-function resolveCsvKey(segments) {
-  if (!Array.isArray(segments) || segments.length === 0) return null;
+  <script src="genre_tree_merged.js"></script>
+  <script src="genre_map.full.js"></script>
 
-  const candidates = [];
-
-  // 1) 完全一致（ > 連結 / _ 連結）
-  candidates.push(segments.join(">"));
-  candidates.push(segments.join("_"));
-
-  // 2) 末尾優先の部分パス（長い方から順に試す）
-  for (let i = 1; i < segments.length; i++) {
-    const tail = segments.slice(i);
-    candidates.push(tail.join(">"));
-    candidates.push(tail.join("_"));
-  }
-
-  // 3) 最後のラベル単体（例：ウォッシュ / チーズ など）
-  candidates.push(segments[segments.length - 1]);
-
-  // 4) 簡易正規化（全角空白→半角、前後空白削除）も試す
-  const norm = s => s.replace(/\u3000/g, " ").trim();
-  const normalizedCandidates = [];
-  for (const c of candidates) {
-    const n = norm(c);
-    if (n !== c) normalizedCandidates.push(n);
-  }
-
-  for (const key of [...candidates, ...normalizedCandidates]) {
-    if (key in (window.genreMap || {})) return { keyTried: key, csvKey: window.genreMap[key] };
-  }
-  return null;
-}
-
-// ▼ 追加：年越し対応の月イテレータ（YYYYMM 文字列を返す）
-function* iterateMonths(startYM, endYM) {
-  let y = parseInt(startYM.slice(0, 4), 10);
-  let m = parseInt(startYM.slice(4, 6), 10);
-  const yEnd = parseInt(endYM.slice(0, 4), 10);
-  const mEnd = parseInt(endYM.slice(4, 6), 10);
-
-  while (y < yEnd || (y === yEnd && m <= mEnd)) {
-    yield String(y) + String(m).padStart(2, "0");
-    m++;
-    if (m === 13) { m = 1; y++; }
-  }
-}
-
-// ▼ 置き換え：display 本体
-function display() {
-  const segments = getSelectedGenreSegments();
-  const start = document.getElementById("startMonth").value;
-  const end = document.getElementById("endMonth").value;
-  const errorDiv = document.getElementById("errorMessage");
-  const successDiv = document.getElementById("successMessage");
-  errorDiv.textContent = "";
-  successDiv.textContent = "";
-
-  if (!segments.length) {
-    errorDiv.textContent = "ジャンルを選択してください。";
-    return;
-  }
-  if (!start || !end) {
-    errorDiv.textContent = "開始月と終了月を指定してください。";
-    return;
-  }
-
-  // キー解決（中間ノード／末尾ラベルも可）
-  const resolved = resolveCsvKey(segments);
-  console.log("選択ジャンルパス（配列）:", segments);
-  console.log("解決結果:", resolved);
-
-  if (!resolved) {
-    errorDiv.textContent =
-      "対応するCSVファイル名が見つかりません: " +
-      segments.join(" > ");
-    return;
-  }
-
-  const startYM = start.replace("-", "");
-  const endYM = end.replace("-", "");
-  const missing = [];
-  const loaded = [];
-  const promises = [];
-
-  for (const ym of iterateMonths(startYM, endYM)) {
-    const url = `data/${resolved.csvKey}_${ym}.csv`;
-    promises.push(
-      fetch(url).then(res => {
-        if (!res.ok) throw new Error(url);
-        loaded.push(url);
-      }).catch(() => missing.push(url))
-    );
-  }
-
-  Promise.all(promises).then(() => {
-    if (missing.length > 0) {
-      errorDiv.textContent = 
-        "CSVファイルが見つかりません:\n" + missing.join("\n");
-      if (loaded.length) {
-        successDiv.textContent =
-          "見つかったCSV:\n" + loaded.join("\n");
+  <script>
+    window.onload = () => {
+      if (!window.genreTree) {
+        document.getElementById("errorMessage").innerText = "ジャンルツリーが読み込まれていません。";
+        return;
       }
-    } else {
-      successDiv.textContent =
-        `キー解決: 「${segments.join(" > ")}」 → 「${resolved.keyTried}」\n` +
-        "すべてのCSVファイルが正常に見つかりました:\n" + loaded.join("\n");
+      createSelectorsFromTree(window.genreTree);
+    };
+
+    function createSelectorsFromTree(tree) {
+      const container = document.getElementById("genreSelectors");
+      container.innerHTML = "";
+      const levels = [];
+
+      function traverse(node, depth) {
+        const select = document.createElement("select");
+        select.dataset.depth = depth;
+        select.innerHTML = '<option value="">--選択--</option>';
+        for (const key in node) {
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = key;
+          select.appendChild(opt);
+        }
+        select.onchange = () => {
+          // 後続セレクト削除
+          while (levels.length > depth + 1) {
+            container.removeChild(levels.pop());
+          }
+          const selected = select.value;
+          const child = node[selected];
+          if (child && Object.keys(child).length > 0) {
+            traverse(child, depth + 1);
+          }
+        };
+        container.appendChild(select);
+        levels[depth] = select;
+      }
+
+      traverse(tree, 0);
     }
-  });
-}
-</script>
+
+    function getSelectedLabels() {
+      const selects = document.querySelectorAll("#genreSelectors select");
+      return Array.from(selects).map(s => s.value).filter(Boolean);
+    }
+
+    function monthsBetween(start, end) {
+      const [sy, sm] = start.split("-").map(Number);
+      const [ey, em] = end.split("-").map(Number);
+      const d = new Date(sy, sm - 1);
+      const endDate = new Date(ey, em - 1);
+      const result = [];
+      while (d <= endDate) {
+        result.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
+        d.setMonth(d.getMonth() + 1);
+      }
+      return result;
+    }
+
+    function display() {
+      const start = document.getElementById("startMonth").value;
+      const end = document.getElementById("endMonth").value;
+      const errorDiv = document.getElementById("errorMessage");
+      const successDiv = document.getElementById("successMessage");
+      errorDiv.textContent = "";
+      successDiv.textContent = "";
+
+      if (!start || !end) {
+        errorDiv.textContent = "開始月と終了月を入力してください。";
+        return;
+      }
+      if (start > end) {
+        errorDiv.textContent = "開始月は終了月以前にしてください。";
+        return;
+      }
+
+      const labels = getSelectedLabels();
+      if (labels.length === 0) {
+        errorDiv.textContent = "ジャンルを選択してください。";
+        return;
+      }
+
+      const genrePath = labels.join(">");
+      const lastLabel = labels[labels.length - 1];
+      const csvKey = (window.genreMap && (window.genreMap[genrePath] || window.genreMap[lastLabel])) || null;
+
+      console.log("ジャンルパス:", genrePath);
+      console.log("対応キー:", csvKey);
+
+      if (!csvKey) {
+        errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + genrePath;
+        return;
+      }
+
+      const months = monthsBetween(start, end);
+      const urls = months.map(ym => `data/${csvKey}_${ym}.csv`);
+
+      Promise.allSettled(urls.map(url => fetch(url))).then(results => {
+        const missing = [];
+        const found = [];
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled" && r.value.ok) found.push(urls[i]);
+          else missing.push(urls[i]);
+        });
+
+        if (missing.length > 0) {
+          errorDiv.textContent = "以下のCSVが見つかりません:\n" + missing.join("\n");
+        }
+        if (found.length > 0) {
+          successDiv.textContent = "読み込み成功:\n" + found.join("\n");
+        }
+      });
+    }
+  </script>
 </body>
 </html>
