@@ -1,4 +1,4 @@
-export const genreMap = {
+window.genreMap = {
   "アクセサリークラフトキット": "accessory_craft_kits",
   "アクセサリークラフト材料": "accessory_craft_materials",
   "アクセサリー・パーツ": "accessory_parts_premium",
