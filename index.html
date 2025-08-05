@@ -1,194 +1,152 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ジャンル別売上ビューア ver3.9.1</title>
-<script src="./genre_map.full.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 2rem; }
-    select, button { margin: 0.5rem; padding: 0.4rem; }
-    #output { margin-top: 2rem; }
-    .error { color: red; }
-  </style>
+    <meta charset="UTF-8">
+    <title>ジャンル別売上ビューア ver3.9.2</title>
+    <script src="./genre_map.full.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .tabs { margin-top: 20px; }
+        .tab-button { margin-right: 10px; padding: 5px 10px; cursor: pointer; }
+        .tab-content { display: none; margin-top: 20px; }
+        .tab-content.active { display: block; }
+        select, button { margin: 5px; }
+    </style>
 </head>
 <body>
-  <h1>ジャンル別売上ビューア ver3.9.1</h1>
+    <h1>ジャンル別売上ビューア ver3.9.2</h1>
+    <label>ジャンル:
+        <select id="genreSelect"></select>
+    </label>
+    <label>開始月:
+        <input type="month" id="startMonth">
+    </label>
+    <label>終了月:
+        <input type="month" id="endMonth">
+    </label>
+    <button onclick="loadData()">表示</button>
+    <div id="errorMsg" style="color:red;"></div>
+    <div class="tabs">
+        <button class="tab-button" onclick="showTab('table')">表</button>
+        <button class="tab-button" onclick="showTab('bar')">棒グラフ</button>
+        <button class="tab-button" onclick="showTab('pie')">円グラフ</button>
+    </div>
+    <div id="table" class="tab-content"></div>
+    <div id="bar" class="tab-content"></div>
+    <div id="pie" class="tab-content"></div>
 
-  <label for="startMonth">開始月: </label>
-  <input type="month" id="startMonth" value="2022-09">
-  <label for="endMonth">終了月: </label>
-  <input type="month" id="endMonth" value="2022-09">
-  <br>
+    <script>
+        let genreTree;
+        let genreMap;
 
-  <label>ジャンル選択: </label>
-  <select id="genreSelect1"></select>
-  <select id="genreSelect2" style="display:none;"></select>
-  <select id="genreSelect3" style="display:none;"></select>
-  <select id="genreSelect4" style="display:none;"></select>
-  <select id="genreSelect5" style="display:none;"></select>
-  <br>
+        // 初期化
+        async function init() {
+            try {
+                const response = await fetch('./genre_tree_merged.json');
+                genreTree = await response.json();
+                genreMap = window.genreMap;
 
-  <button id="loadBtn">表示</button>
-  <div id="output"></div>
+                const select = document.getElementById("genreSelect");
+                populateGenreSelect(select, genreTree, "");
 
-  <script>
-    
-
-    const genreTreeUrl = "./genre_tree_merged.json";
-    let genreTree = null;
-
-    const selects = [
-      document.getElementById("genreSelect1"),
-      document.getElementById("genreSelect2"),
-      document.getElementById("genreSelect3"),
-      document.getElementById("genreSelect4"),
-      document.getElementById("genreSelect5")
-    ];
-
-    async function fetchGenreTree() {
-      const res = await fetch(genreTreeUrl);
-      if (!res.ok) throw new Error("ジャンルツリーの取得に失敗しました");
-      return await res.json();
-    }
-
-    function populateSelect(select, options) {
-      select.innerHTML = "<option value=''>選択してください</option>";
-      for (const key of Object.keys(options)) {
-        const opt = document.createElement("option");
-        opt.value = key;
-        opt.textContent = key;
-        select.appendChild(opt);
-      }
-    }
-
-    function clearLowerSelects(index) {
-      for (let i = index + 1; i < selects.length; i++) {
-        selects[i].style.display = "none";
-        selects[i].innerHTML = "";
-      }
-    }
-
-    function getSelectedPath() {
-      return selects.map(s => s.value).filter(v => v);
-    }
-
-    function findGenreNode(path) {
-      let node = genreTree;
-      for (const segment of path) {
-        node = node[segment];
-        if (!node) break;
-      }
-      return node;
-    }
-
-    function setupSelects() {
-      populateSelect(selects[0], genreTree);
-      selects[0].style.display = "inline";
-      for (let i = 0; i < selects.length; i++) {
-        selects[i].addEventListener("change", () => {
-          const path = getSelectedPath();
-          clearLowerSelects(i);
-          const node = findGenreNode(path);
-          if (node && typeof node === "object") {
-            const next = selects[i + 1];
-            if (next) {
-              populateSelect(next, node);
-              next.style.display = "inline";
+            } catch (e) {
+                document.getElementById("errorMsg").textContent = "ジャンル定義の読み込みに失敗しました。";
             }
-          }
-        });
-      }
-    }
-
-    function getGenreKey(path) {
-      for (let i = path.length; i > 0; i--) {
-        const subPath = path.slice(0, i).join(">");
-        if (window.genreMap[subPath]) return window.genreMap[subPath];
-      }
-      return null;
-    }
-
-    function getMonths(start, end) {
-      const [sy, sm] = start.split("-").map(Number);
-      const [ey, em] = end.split("-").map(Number);
-      const months = [];
-      for (let y = sy; y <= ey; y++) {
-        for (let m = 1; m <= 12; m++) {
-          if ((y === sy && m < sm) || (y === ey && m > em)) continue;
-          months.push(`${y}${m.toString().padStart(2, "0")}`);
         }
-      }
-      return months;
-    }
 
-    async function fetchCsvData(fileUrl) {
-      try {
-        const res = await fetch(fileUrl);
-        if (!res.ok) return null;
-        const text = await res.text();
-        return text.trim().split("\n").map(line => line.split(","));
-      } catch {
-        return null;
-      }
-    }
-
-    document.getElementById("loadBtn").addEventListener("click", async () => {
-      const output = document.getElementById("output");
-      output.innerHTML = "";
-      const path = getSelectedPath();
-      if (path.length === 0) {
-        output.innerHTML = "<div class='error'>ジャンルを選択してください。</div>";
-        return;
-      }
-
-      const fileKey = getGenreKey(path);
-      if (!fileKey) {
-        output.innerHTML = "<div class='error'>対応するCSVファイル名が見つかりませんでした：" + path.join(">") + "</div>";
-        return;
-      }
-
-      const months = getMonths(
-        document.getElementById("startMonth").value,
-        document.getElementById("endMonth").value
-      );
-
-      let dataMap = new Map();
-      for (const month of months) {
-        const fileName = `./data/${fileKey}_${month}.csv`;
-        const rows = await fetchCsvData(fileName);
-        if (!rows) continue;
-        for (const [genre, value] of rows) {
-          const val = Number(value);
-          if (!isNaN(val)) {
-            dataMap.set(genre, (dataMap.get(genre) || 0) + val);
-          }
+        // 階層セレクトボックスにジャンルを追加
+        function populateGenreSelect(select, tree, prefix) {
+            for (const key in tree) {
+                const path = prefix ? prefix + " > " + key : key;
+                if (Object.keys(tree[key]).length > 0) {
+                    populateGenreSelect(select, tree[key], path);
+                } else {
+                    const option = document.createElement("option");
+                    option.value = path;
+                    option.text = path;
+                    select.appendChild(option);
+                }
+            }
         }
-      }
 
-      if (dataMap.size === 0) {
-        output.innerHTML = "<div class='error'>該当データが見つかりませんでした。</div>";
-        return;
-      }
+        function getParentPath(path) {
+            const parts = path.split(" > ");
+            parts.pop();
+            return parts.join(" > ");
+        }
 
-      const table = document.createElement("table");
-      table.border = "1";
-      const header = table.insertRow();
-      header.insertCell().textContent = "ジャンル名";
-      header.insertCell().textContent = "合計金額";
-      for (const [genre, total] of dataMap.entries()) {
-        const row = table.insertRow();
-        row.insertCell().textContent = genre;
-        row.insertCell().textContent = total.toLocaleString();
-      }
-      output.appendChild(table);
-    });
+        async function loadData() {
+            const genre = document.getElementById("genreSelect").value;
+            const startMonth = document.getElementById("startMonth").value;
+            const endMonth = document.getElementById("endMonth").value;
+            document.getElementById("errorMsg").textContent = "";
 
-    fetchGenreTree().then(tree => {
-      genreTree = tree;
-      setupSelects();
-    }).catch(err => {
-      document.getElementById("output").innerHTML = "<div class='error'>" + err.message + "</div>";
-    });
-  </script>
+            if (!genre || !startMonth || !endMonth) {
+                document.getElementById("errorMsg").textContent = "すべての項目を入力してください。";
+                return;
+            }
+
+            const start = parseInt(startMonth.replace("-", ""));
+            const end = parseInt(endMonth.replace("-", ""));
+            let dataMap = {};
+
+            for (let ym = start; ym <= end; ym = nextMonth(ym)) {
+                let fileGenre = genre;
+                let found = false;
+                while (fileGenre) {
+                    const fileKey = genreMap[fileGenre];
+                    if (fileKey) {
+                        const url = `./data/${fileKey}_${ym}.csv`;
+                        try {
+                            const resp = await fetch(url);
+                            if (!resp.ok) throw new Error("CSV not found");
+                            const text = await resp.text();
+                            const lines = text.trim().split("\n");
+                            for (const line of lines) {
+                                const [name, amount] = line.split(",");
+                                if (name === genre) {
+                                    if (!dataMap[name]) dataMap[name] = 0;
+                                    dataMap[name] += parseFloat(amount);
+                                }
+                            }
+                            found = true;
+                            break;
+                        } catch (e) {}
+                    }
+                    fileGenre = getParentPath(fileGenre);
+                }
+
+                if (!found) {
+                    document.getElementById("errorMsg").textContent += `\n${ym}：該当するCSVファイルが見つかりません`;
+                }
+            }
+
+            displayTable(dataMap);
+        }
+
+        function nextMonth(ym) {
+            let year = Math.floor(ym / 100);
+            let month = ym % 100;
+            month++;
+            if (month > 12) { year++; month = 1; }
+            return year * 100 + month;
+        }
+
+        function displayTable(dataMap) {
+            const div = document.getElementById("table");
+            div.innerHTML = "<table border='1'><tr><th>ジャンル</th><th>金額</th></tr>" +
+                Object.entries(dataMap).map(([k, v]) => `<tr><td>${k}</td><td>${v.toLocaleString()}</td></tr>`).join("") +
+                "</table>";
+            showTab("table");
+        }
+
+        function showTab(id) {
+            document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+            document.getElementById(id).classList.add("active");
+        }
+
+        window.onload = init;
+    </script>
 </body>
 </html>
