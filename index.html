@@ -3,47 +3,120 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ジャンル選択ビューア</title>
+  <title>ジャンル別CSVビューア</title>
 </head>
 <body>
-  <h1>ジャンル選択ビューア</h1>
-  <div id="genreSelects"></div>
-  <div id="result"></div>
+  <h1>ジャンル別CSVビューア</h1>
+  <label for="genre">ジャンルを選択:</label>
+  <select id="genreSelect"></select>
+
+  <label for="month">年月を選択:</label>
+  <select id="monthSelect">
+    <option value="202205">2022年05月</option>
+    <option value="202206">2022年06月</option>
+    <option value="202207">2022年07月</option>
+    <option value="202208">2022年08月</option>
+    <option value="202209">2022年09月</option>
+    <option value="202210">2022年10月</option>
+    <option value="202211">2022年11月</option>
+    <option value="202212">2022年12月</option>
+    <option value="202301">2023年01月</option>
+    <option value="202302">2023年02月</option>
+    <option value="202303">2023年03月</option>
+    <option value="202304">2023年04月</option>
+    <option value="202305">2023年05月</option>
+    <option value="202306">2023年06月</option>
+    <option value="202307">2023年07月</option>
+    <option value="202308">2023年08月</option>
+    <option value="202309">2023年09月</option>
+    <option value="202310">2023年10月</option>
+    <option value="202311">2023年11月</option>
+    <option value="202312">2023年12月</option>
+    <option value="202401">2024年01月</option>
+    <option value="202402">2024年02月</option>
+    <option value="202403">2024年03月</option>
+    <option value="202404">2024年04月</option>
+    <option value="202405">2024年05月</option>
+    <option value="202406">2024年06月</option>
+    <option value="202407">2024年07月</option>
+    <option value="202408">2024年08月</option>
+    <option value="202409">2024年09月</option>
+    <option value="202410">2024年10月</option>
+    <option value="202411">2024年11月</option>
+    <option value="202412">2024年12月</option>
+    <option value="202501">2025年01月</option>
+    <option value="202502">2025年02月</option>
+    <option value="202503">2025年03月</option>
+    <option value="202504">2025年04月</option>
+    <option value="202505">2025年05月</option>
+    <option value="202506">2025年06月</option>
+    <option value="202507">2025年07月</option>
+    <option value="202508">2025年08月</option>
+    <option value="202509">2025年09月</option>
+  </select>
+
+  <button onclick="loadCSV()">表示</button>
+  <table border="1" id="csvTable">
+    <thead>
+      <tr><th>ジャンル名</th><th>金額</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script type="module">
-    import genreMap from './genre_map.final.js';
-    import genreTree from './genre_tree_merged.json' assert { type: "json" };
+    import { genreTree } from './genre_tree.js';
+    import { genreMap } from './genre_map.js';
 
-    function renderSelectUI(tree, container) {
-      container.innerHTML = '';
-      const select = document.createElement('select');
-      const defaultOption = document.createElement('option');
-      defaultOption.text = 'ジャンルを選択';
-      defaultOption.disabled = true;
-      defaultOption.selected = true;
-      select.appendChild(defaultOption);
+    const genreSelect = document.getElementById("genreSelect");
 
-      Object.keys(tree).forEach(key => {
-        const option = document.createElement('option');
-        option.value = key;
-        option.text = key;
-        select.appendChild(option);
-      });
-
-      select.addEventListener('change', () => {
-        const selected = select.value;
-        const resultDiv = document.getElementById('result');
-        const mapped = genreMap[selected] || '(未定義)';
-        resultDiv.textContent = `選択ジャンル: ${selected} → 英語ファイル名: ${mapped}`;
-      });
-
-      container.appendChild(select);
+    function populateGenreOptions(tree, prefix = "") {
+      for (const key in tree) {
+        const value = tree[key];
+        const fullPath = prefix ? prefix + ">" + key : key;
+        if (value === null || Object.keys(value).length === 0) {
+          const option = document.createElement("option");
+          option.value = fullPath;
+          option.textContent = fullPath;
+          genreSelect.appendChild(option);
+        } else {
+          populateGenreOptions(value, fullPath);
+        }
+      }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const container = document.getElementById('genreSelects');
-      renderSelectUI(genreTree, container);
-    });
+    populateGenreOptions(genreTree);
+
+    window.loadCSV = async function () {
+      const genrePath = genreSelect.value;
+      const ym = document.getElementById("monthSelect").value;
+
+      const fileKey = genreMap[genrePath];
+      if (!fileKey) {
+        alert("対応するCSVファイル名が見つかりませんでした：" + genrePath);
+        return;
+      }
+
+      const csvPath = `./data/${fileKey}_${ym}.csv`;
+      try {
+        const response = await fetch(csvPath);
+        const csvText = await response.text();
+        const rows = csvText.trim().split("\n").map(r => r.split(","));
+
+        const tbody = document.querySelector("#csvTable tbody");
+        tbody.innerHTML = "";
+        for (const row of rows) {
+          const tr = document.createElement("tr");
+          for (const cell of row) {
+            const td = document.createElement("td");
+            td.textContent = cell;
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        alert("CSVの読み込みに失敗しました：" + csvPath);
+      }
+    };
   </script>
 </body>
 </html>
