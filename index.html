@@ -31,7 +31,7 @@
   <button id="loadBtn">表示</button>
   <div id="output"></div>
 
-  <script type="module">
+  <script>
     import {{ genreMap }} from './genre_map.full.js';
 
     const genreTreeUrl = "./genre_tree_merged.json";
@@ -103,7 +103,7 @@
     function getGenreKey(path) {
       for (let i = path.length; i > 0; i--) {
         const subPath = path.slice(0, i).join(">");
-        if (genreMap[subPath]) return genreMap[subPath];
+        if (window.genreMap[subPath]) return window.genreMap[subPath];
       }
       return null;
     }
