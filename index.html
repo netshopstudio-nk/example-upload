@@ -3,10 +3,10 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>ジャンル別CSVビューア</title>
+  <title>ジャンル別CSVビューア　ver4.0</title>
 </head>
 <body>
-  <h1>ジャンル別CSVビューア　3.9.7</h1>
+  <h1>ジャンル別CSVビューア　ver4.0</h1>
   <label>ジャンル:</label>
   <select id="genre-select"></select>
   <br />
@@ -28,6 +28,9 @@
       try {
         const response = await fetch(genreTreeUrl);
         genreTree = await response.json();
+        if (!Array.isArray(genreTree) && typeof genreTree === 'object') {
+          genreTree = [genreTree];
+        }
         populateGenreSelect();
       } catch (error) {
         console.error("ジャンルデータの読み込みに失敗しました", error);
@@ -50,7 +53,9 @@
         }
       }
 
-      traverse(genreTree);
+      for (const tree of genreTree) {
+        traverse(tree);
+      }
 
       for (const genre of flatGenres) {
         const option = document.createElement("option");
@@ -70,6 +75,20 @@
         return;
       }
 
+      const genreParts = selectedGenre.split(">");
+      if (genreParts.length < 2) {
+        alert("データ取得に必要な階層が不足しています");
+        return;
+      }
+
+      const parentGenre = genreParts.slice(0, -1).join(">");
+      const fileKey = window.genreMap[parentGenre];
+      if (!fileKey) {
+        console.warn("対応するCSVファイル名が見つかりませんでした：" + parentGenre);
+        document.getElementById("output").innerText = "CSVファイルが見つかりませんでした：" + parentGenre;
+        return;
+      }
+
       const start = new Date(startMonth + "-01");
       const end = new Date(endMonth + "-01");
       end.setMonth(end.getMonth() + 1);
@@ -78,13 +97,6 @@
 
       for (let d = new Date(start); d < end; d.setMonth(d.getMonth() + 1)) {
         const yyyymm = d.toISOString().slice(0, 7).replace("-", "");
-        const fileKey = window.genreMap[selectedGenre];
-
-        if (!fileKey) {
-          console.warn("対応するCSVファイル名が見つかりませんでした：" + selectedGenre);
-          continue;
-        }
-
         const fileName = `./data/${fileKey}_${yyyymm}.csv`;
 
         try {
