@@ -2,129 +2,135 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ジャンル別売上ビューア ver5.0.5</title>
-  <script src="genre_map.full.js"></script>
-  <script src="genre_tree_merged_fixed.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 2em; }
-    .error { color: red; margin-top: 1em; }
-    .success { color: green; margin-top: 1em; }
-    select { margin: 0.3em; }
-  </style>
+    <meta charset="UTF-8">
+    <title>ジャンル別CSVビューア ver5.0.5</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        select, button { margin: 0.5em 0; }
+        table, th, td { border: 1px solid black; border-collapse: collapse; padding: 0.5em; }
+    </style>
+    <script src="★修正最終版★genre_tree_merged.js"></script>
+    <script src="★修正最終版★genre_map.full.js"></script>
 </head>
 <body>
-  <h1>ジャンル別売上ビューア <strong>ver5.0.5</strong></h1>
-  <label>開始月: <input type="month" id="startMonth" value="2025-02"></label>
-  <label>終了月: <input type="month" id="endMonth" value="2025-02"></label>
-  <div id="genreSelectors"></div>
-  <button onclick="display()">表示</button>
-  <div class="error" id="errorMessage"></div>
-  <div class="success" id="successMessage"></div>
+    <h1>ジャンル別CSVビューア ver5.0.5.0</h1>
 
-<script>
-window.onload = () => {
-  if (!window.genreTree || typeof window.genreTree !== 'object') {
-    document.getElementById("errorMessage").innerText = "ジャンルツリーが読み込まれていません。";
-    return;
-  }
-  createSelectorsFromTree(window.genreTree);
-};
+    <label for="month">表示月 (例: 202505)</label><br>
+    <input type="text" id="month" value="202505"><br>
 
-function createSelectorsFromTree(tree) {
-  const container = document.getElementById("genreSelectors");
-  container.innerHTML = ""; // reset
-  const levels = [];
+    <div id="selectors"></div>
+    <button onclick="display()">表示</button>
 
-  function traverse(node, depth) {
-    if (!levels[depth]) {
-      const select = document.createElement("select");
-      select.dataset.depth = depth;
-      select.onchange = () => updateSelectors(depth, node);
-      container.appendChild(select);
-      levels[depth] = select;
-    }
-    const select = levels[depth];
-    select.innerHTML = '<option value="">--選択--</option>';
-    for (const key in node) {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = key;
-      select.appendChild(opt);
-    }
-  }
+    <div id="error" style="color: red;"></div>
+    <div id="success" style="color: green;"></div>
+    <div id="output"></div>
 
-  function updateSelectors(depth, node) {
-    // Remove deeper levels
-    for (let i = depth + 1; i < levels.length; i++) {
-      levels[i].remove();
-    }
-    levels.length = depth + 1;
+    <script>
+        const genreTree = window.genreTreeMerged;
+        const genreMap = window.genreMap;
 
-    const selected = levels[depth].value;
-    if (node[selected] && typeof node[selected] === 'object') {
-      traverse(node[selected], depth + 1);
-    }
-  }
+        function createSelectorsFromSelection(selectedPath) {
+            const container = document.getElementById('selectors');
+            container.innerHTML = '';
 
-  traverse(tree, 0);
-}
+            let current = genreTree;
+            let path = [];
+            for (let i = 0; i < 5; i++) {
+                if (!current || Object.keys(current).length === 0) break;
 
-function getSelectedGenrePath() {
-  const selects = document.querySelectorAll("#genreSelectors select");
-  return Array.from(selects).map(s => s.value).filter(v => v).join(">");
-}
+                const select = document.createElement('select');
+                select.innerHTML = '<option value="">選択してください</option>';
+                for (const key in current) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = key;
+                    if (selectedPath[i] === key) option.selected = true;
+                    select.appendChild(option);
+                }
+                select.dataset.level = i;
+                container.appendChild(select);
 
-function display() {
-  const genrePath = getSelectedGenrePath();
-  const start = document.getElementById("startMonth").value;
-  const end = document.getElementById("endMonth").value;
-  const errorDiv = document.getElementById("errorMessage");
-  const successDiv = document.getElementById("successMessage");
-  errorDiv.textContent = "";
-  successDiv.textContent = "";
+                select.addEventListener('change', () => {
+                    const newPath = Array.from(container.querySelectorAll('select')).map(s => s.value).filter(v => v);
+                    createSelectorsFromSelection(newPath);
+                });
 
-  if (!genrePath) {
-    errorDiv.textContent = "ジャンルを選択してください。";
-    return;
-  }
+                const nextKey = selectedPath[i];
+                if (!nextKey || !current[nextKey]) break;
+                current = current[nextKey];
+                path.push(nextKey);
+            }
+        }
 
-  const key = genrePath;
-  const csvKey = window.genreMap?.[key];
-  console.log("選択ジャンルパス:", key);
-  console.log("対応CSVファイル名キー:", csvKey);
+        function createSelectors() {
+            createSelectorsFromSelection([]);
+        }
 
-  if (!csvKey) {
-    errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + key;
-    return;
-  }
+        function getSelectedPath() {
+            const selects = document.querySelectorAll('#selectors select');
+            return Array.from(selects).map(s => s.value).filter(v => v);
+        }
 
-  const startYM = start.replace("-", "");
-  const endYM = end.replace("-", "");
-  let missing = [];
-  let loaded = [];
+        async function display() {
+            const errorDiv = document.getElementById('error');
+            const outputDiv = document.getElementById('output');
+            const successDiv = document.getElementById('success');
+            errorDiv.textContent = '';
+            outputDiv.textContent = '';
+            successDiv.textContent = '';
 
-  const promises = [];
-  for (let ym = parseInt(startYM); ym <= parseInt(endYM); ym++) {
-    const url = `data/${csvKey}_${ym}.csv`;
-    promises.push(fetch(url).then(res => {
-      if (!res.ok) throw new Error(url);
-      loaded.push(url);
-    }).catch(() => missing.push(url)));
-  }
+            const path = getSelectedPath();
+            const month = document.getElementById('month').value;
 
-  Promise.all(promises).then(() => {
-    if (missing.length > 0) {
-      errorDiv.textContent = "CSVファイルが見つかりません:
-" + missing.join("
-");
-    } else {
-      successDiv.textContent = "すべてのCSVファイルが正常に見つかりました:
-" + loaded.join("
-");
-    }
-  });
-}
-</script>
+            if (!month.match(/^\d{6}$/)) {
+                errorDiv.textContent = "月の形式が不正です（例：202505）";
+                return;
+            }
+
+            let matchedKey = null;
+            for (let i = path.length - 2; i >= 0; i--) {
+                const partialPath = path.slice(0, i + 1).join('>');
+                if (genreMap[partialPath]) {
+                    matchedKey = partialPath;
+                    break;
+                }
+            }
+
+            if (!matchedKey) {
+                errorDiv.textContent = `対応するCSVファイル名が見つかりませんでした: ${path.join('>')}`;
+                return;
+            }
+
+            const fileKey = genreMap[matchedKey];
+            const fileName = `data/${fileKey}_${month}.csv`;
+            console.log("読み込み対象CSVファイル:", fileName);
+
+            try {
+                const response = await fetch(fileName);
+                if (!response.ok) throw new Error("ファイルが存在しません");
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                const rows = lines.map(line => line.split(','));
+
+                const table = document.createElement('table');
+                for (const row of rows) {
+                    const tr = document.createElement('tr');
+                    for (const cell of row) {
+                        const td = document.createElement('td');
+                        td.textContent = cell;
+                        tr.appendChild(td);
+                    }
+                    table.appendChild(tr);
+                }
+                outputDiv.appendChild(table);
+            } catch (e) {
+                errorDiv.textContent = `CSVファイル読み込みエラー: ${e.message}`;
+            }
+        }
+
+        window.onload = () => {
+            createSelectors();
+        };
+    </script>
 </body>
 </html>
