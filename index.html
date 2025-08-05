@@ -1,83 +1,183 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>ジャンル別CSVビューア ver.4.3.3.1</title>
-    <style>
-        body {
-            font-family: sans-serif;
-        }
-        .genre {
-            margin-left: 20px;
-        }
-        .caret {
-            cursor: pointer;
-            user-select: none;
-        }
-        .nested {
-            display: none;
-        }
-        .active {
-            display: block;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>ジャンル別売上ビューア</title>
+  <script src="./genre_tree_merged.js"></script>
+  <script src="./genre_map.full.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    select, button { margin: 0.5rem; padding: 0.4rem; }
+    #output { margin-top: 2rem; }
+    .error { color: red; }
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #999; padding: 0.5em; }
+  </style>
 </head>
 <body>
-    <h1>ジャンル別CSVビューア ver.4.3.3.1</h1>
-    <div id="genreContainer"></div>
-    <br>
-    <label for="startMonth">開始月：</label>
-    <select id="startMonth"></select>
-    <label for="endMonth">終了月：</label>
-    <select id="endMonth"></select>
-    <button onclick="alert('検索処理は未実装です')">表示</button>
+  <h1>ジャンル別売上ビューア</h1>
 
-    <script src="genre_tree_merged.js"></script>
-    <script>
-        function createTree(data, parent) {
-            Object.keys(data).forEach(key => {
-                const hasChildren = Object.keys(data[key]).length > 0;
-                const div = document.createElement('div');
-                div.classList.add('genre');
+  <label for="startMonth">開始月: </label>
+  <input type="month" id="startMonth" value="2022-09">
+  <label for="endMonth">終了月: </label>
+  <input type="month" id="endMonth" value="2022-09">
+  <br>
 
-                if (hasChildren) {
-                    const caret = document.createElement('span');
-                    caret.textContent = '▶︎ ' + key;
-                    caret.classList.add('caret');
-                    caret.onclick = () => {
-                        caret.nextSibling.classList.toggle('active');
-                        caret.textContent = caret.textContent.startsWith('▶︎') ? '▼ ' + key : '▶︎ ' + key;
-                    };
-                    div.appendChild(caret);
+  <label>ジャンル選択: </label>
+  <select id="genreSelect1"></select>
+  <select id="genreSelect2" style="display:none;"></select>
+  <select id="genreSelect3" style="display:none;"></select>
+  <select id="genreSelect4" style="display:none;"></select>
+  <select id="genreSelect5" style="display:none;"></select>
+  <br>
 
-                    const nestedDiv = document.createElement('div');
-                    nestedDiv.classList.add('nested');
-                    createTree(data[key], nestedDiv);
-                    div.appendChild(nestedDiv);
-                } else {
-                    div.textContent = key;
-                }
+  <button id="loadBtn">表示</button>
+  <div id="output"></div>
 
-                parent.appendChild(div);
-            });
-        }
+  <script>
+    const genreTree = window.genreTree;
+    const genreMap = window.genreMap;
+    const selects = [
+      document.getElementById("genreSelect1"),
+      document.getElementById("genreSelect2"),
+      document.getElementById("genreSelect3"),
+      document.getElementById("genreSelect4"),
+      document.getElementById("genreSelect5")
+    ];
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const container = document.getElementById('genreContainer');
-            createTree(window.genreTree, container);
+    function populateSelect(select, options) {
+      select.innerHTML = "<option value=''>選択してください</option>";
+      for (const key in options) {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = key;
+        select.appendChild(opt);
+      }
+    }
 
-            const startMonth = document.getElementById('startMonth');
-            const endMonth = document.getElementById('endMonth');
-            for (let y = 2022; y <= 2025; y++) {
-                for (let m = 1; m <= 12; m++) {
-                    const label = y + '年' + ('0' + m).slice(-2) + '月';
-                    const opt = new Option(label, y + ('0' + m).slice(-2));
-                    startMonth.appendChild(opt.cloneNode(true));
-                    endMonth.appendChild(opt.cloneNode(true));
-                }
+    function clearLowerSelects(index) {
+      for (let i = index + 1; i < selects.length; i++) {
+        selects[i].style.display = "none";
+        selects[i].innerHTML = "";
+      }
+    }
+
+    function getSelectedPath() {
+      return selects.map(s => s.value).filter(v => v);
+    }
+
+    function findNode(path) {
+      let node = genreTree;
+      for (const key of path) {
+        node = node?.[key];
+        if (!node) break;
+      }
+      return node;
+    }
+
+    function setupSelects() {
+      populateSelect(selects[0], genreTree);
+      selects[0].style.display = "inline";
+      selects.forEach((sel, idx) => {
+        sel.addEventListener("change", () => {
+          const path = getSelectedPath();
+          clearLowerSelects(idx);
+          const node = findNode(path);
+          if (node && typeof node === "object") {
+            const next = selects[idx + 1];
+            if (next) {
+              populateSelect(next, node);
+              next.style.display = "inline";
             }
+          }
         });
-    </script>
+      });
+    }
+
+    function getGenreMapKey(path) {
+      for (let i = path.length - 1; i > 0; i--) {
+        const upperPath = path.slice(0, i).join(">");
+        if (genreMap[upperPath]) return genreMap[upperPath];
+      }
+      return null;
+    }
+
+    function getMonths(start, end) {
+      const [sy, sm] = start.split("-").map(Number);
+      const [ey, em] = end.split("-").map(Number);
+      const months = [];
+      for (let y = sy; y <= ey; y++) {
+        for (let m = 1; m <= 12; m++) {
+          if ((y === sy && m < sm) || (y === ey && m > em)) continue;
+          months.push(`${y}${m.toString().padStart(2, "0")}`);
+        }
+      }
+      return months;
+    }
+
+    async function fetchCsv(file) {
+      try {
+        const res = await fetch(file);
+        if (!res.ok) return null;
+        const text = await res.text();
+        return text.trim().split("\n").map(row => row.split(","));
+      } catch {
+        return null;
+      }
+    }
+
+    document.getElementById("loadBtn").addEventListener("click", async () => {
+      const output = document.getElementById("output");
+      output.innerHTML = "";
+
+      const path = getSelectedPath();
+      if (path.length === 0) {
+        output.innerHTML = "<div class='error'>ジャンルを選択してください。</div>";
+        return;
+      }
+
+      const fileKey = getGenreMapKey(path);
+      if (!fileKey) {
+        output.innerHTML = `<div class='error'>対応するCSVファイル名が見つかりませんでした：${path.join(" > ")}</div>`;
+        return;
+      }
+
+      const months = getMonths(
+        document.getElementById("startMonth").value,
+        document.getElementById("endMonth").value
+      );
+
+      const dataMap = new Map();
+      for (const month of months) {
+        const file = `./data/${fileKey}_${month}.csv`;
+        const rows = await fetchCsv(file);
+        if (!rows) continue;
+        for (const [name, value] of rows) {
+          const val = parseFloat(value);
+          if (!isNaN(val)) {
+            dataMap.set(name, (dataMap.get(name) || 0) + val);
+          }
+        }
+      }
+
+      if (dataMap.size === 0) {
+        output.innerHTML = "<div class='error'>該当データが見つかりませんでした。</div>";
+        return;
+      }
+
+      const table = document.createElement("table");
+      const header = table.insertRow();
+      header.innerHTML = "<th>ジャンル名</th><th>合計金額</th>";
+
+      for (const [genre, sum] of dataMap) {
+        const row = table.insertRow();
+        row.innerHTML = `<td>${genre}</td><td>${sum.toLocaleString()}</td>`;
+      }
+
+      output.appendChild(table);
+    });
+
+    setupSelects();
+  </script>
 </body>
 </html>
