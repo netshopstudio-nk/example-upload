@@ -2,56 +2,70 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ジャンル選択ビューア（ver3.4）</title>
+  <meta charset="UTF-8" />
+  <title>ジャンル別売上ビューア（ver3.5）</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    select, input { margin: 5px; }
+    select, input, button { margin: 5px; }
+    #result p { margin: 3px 0; }
     .error { color: red; }
+    .success { color: green; }
   </style>
-  <script src="genre_map.full.js"></script>
-</head>
-<body>
-  <h1>ジャンル選択ビューア（ver3.4）</h1>
-  <div>
-    開始月（例：202205）：<input type="text" id="startMonth" value="202205">
-    終了月（例：202509）：<input type="text" id="endMonth" value="202502">
-  </div>
-  <div>
-    ジャンルを選択:
-    <select id="genreSelect">
-      <option value="">-- ジャンルを選んでください --</option>
-    </select>
-  </div>
-  <button onclick="loadData()">表示</button>
-  <div id="result"></div>
-
-  <script>
-    function populateGenres() {
-      const select = document.getElementById("genreSelect");
-      if (typeof genreMap !== "object") {
-        console.error("genreMap is not loaded correctly.");
-        return;
+  <script type="module">
+    import {{ genreMap }} from './genre_map.full.js';
+s
+    async function loadGenreTree() {
+      const res = await fetch('./genre_tree_merged.json');
+      if (!res.ok) {
+        document.getElementById("result").innerHTML = "<p class='error'>ジャンル階層データの読み込みに失敗しました。</p>";
+        return null;
       }
+      return await res.json();
+    }
 
-      const entries = Object.entries(genreMap).sort((a, b) => a[0].localeCompare(b[0]));
-      for (const [ja, en] of entries) {
+    function buildGenreOptions(tree, path = "") {
+      const options = [];
+      for (const key in tree) {
+        const fullPath = path ? path + " > " + key : key;
+        options.push(fullPath);
+        if (typeof tree[key] === 'object') {
+          options.push(...buildGenreOptions(tree[key], fullPath));
+        }
+      }
+      return options;
+    }
+
+    async function populateGenres() {
+      const select = document.getElementById("genreSelect");
+      const tree = await loadGenreTree();
+      if (!tree) return;
+
+      const paths = buildGenreOptions(tree);
+      paths.sort((a, b) => a.localeCompare(b, 'ja'));
+      for (const ja of paths) {
+        const en = genreMap[ja];
         const option = document.createElement("option");
-        option.value = en;
-        option.textContent = ja;
+        option.value = en || "";  // "" means not mapped
+        option.textContent = ja + (en ? "" : "（未対応）");
         select.appendChild(option);
       }
     }
 
     async function loadData() {
       const genreKey = document.getElementById("genreSelect").value;
+      const genreLabel = document.getElementById("genreSelect").selectedOptions[0].textContent;
       const startMonth = parseInt(document.getElementById("startMonth").value);
       const endMonth = parseInt(document.getElementById("endMonth").value);
       const resultDiv = document.getElementById("result");
       resultDiv.innerHTML = "";
 
-      if (!genreKey || isNaN(startMonth) || isNaN(endMonth)) {
-        resultDiv.innerHTML = "<p class='error'>ジャンルと月を正しく指定してください。</p>";
+      if (!genreKey) {
+        resultDiv.innerHTML = `<p class='error'>ジャンル「${genreLabel}」はCSVファイルに未対応です。</p>`;
+        return;
+      }
+
+      if (isNaN(startMonth) || isNaN(endMonth)) {
+        resultDiv.innerHTML = "<p class='error'>開始月・終了月を正しく入力してください。</p>";
         return;
       }
 
@@ -59,10 +73,10 @@
         const url = `https://netshopstudio-nk.github.io/example-upload/data/${genreKey}_${ym}.csv`;
         try {
           const res = await fetch(url);
-          if (!res.ok) throw new Error("データが見つかりませんでした");
-          const text = await res.text();
-          resultDiv.innerHTML += `<p>✅ ${ym}: データ取得成功</p>`;
-        } catch (e) {
+          if (!res.ok) throw new Error("Not Found");
+          await res.text();  // not parsed here, just confirm existence
+          resultDiv.innerHTML += `<p class='success'>✅ ${ym}: データ取得成功</p>`;
+        } catch {
           resultDiv.innerHTML += `<p class='error'>❌ ${ym}: データが見つかりませんでした (${url})</p>`;
         }
 
@@ -73,7 +87,23 @@
       }
     }
 
-    window.onload = populateGenres;
+    window.addEventListener('DOMContentLoaded', populateGenres);
+    window.loadData = loadData;
   </script>
+</head>
+<body>
+  <h1>ジャンル別売上ビューア（ver3.5）</h1>
+  <div>
+    開始月（例：202205）：<input type="text" id="startMonth" value="202209">
+    終了月（例：202509）：<input type="text" id="endMonth" value="202209">
+  </div>
+  <div>
+    ジャンルを選択:
+    <select id="genreSelect">
+      <option value="">-- ジャンルを選んでください --</option>
+    </select>
+  </div>
+  <button onclick="loadData()">表示</button>
+  <div id="result"></div>
 </body>
 </html>
