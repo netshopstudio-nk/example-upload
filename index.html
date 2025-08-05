@@ -1,112 +1,124 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>ジャンル別売上ビューア - デバッグ版</title>
+  <meta charset="UTF-8" />
+  <title>ジャンル別売上ビューア ver5.0.3</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    select, input[type="month"] { margin: 5px; }
+    #log { margin-top: 20px; color: red; }
+  </style>
 </head>
 <body>
-  <h1>ジャンル別売上ビューア（デバッグログ付き）ver.5.3</h1>
-  <div id="genre-selectors"></div>
-  <button onclick="loadData()">表示</button>
-  <div id="error-message" style="color:red"></div>
+  <h1>ジャンル別売上ビューア　ver5.0.3</h1>
+  開始月: <input type="month" id="startMonth" value="2025-02">
+  終了月: <input type="month" id="endMonth" value="2025-02"><br />
+  ジャンル選択:<br />
+  <div id="selectors"></div>
+  <button onclick="display()">表示</button>
+  <div id="log"></div>
 
   <script src="./genre_tree_merged.js"></script>
   <script src="./genre_map.full.js"></script>
   <script>
-    const genreTree = window.genreTreeMerged;
-    const genreMap = window.genreMap;
+    const selectorsDiv = document.getElementById('selectors');
+    let currentSelectors = [];
 
-    function getSelectedGenrePath() {
-      const selectors = document.querySelectorAll("#genre-selectors select");
-      const parts = [];
-      selectors.forEach(sel => {
-        if (sel.value) parts.push(sel.value);
+    function createSelectorsFromSelection(path) {
+      selectorsDiv.innerHTML = '';
+      currentSelectors = [];
+      let node = window.genreTreeMerged;
+      path.forEach((name, depth) => {
+        const select = document.createElement('select');
+        const options = Object.keys(node || {}).sort();
+        options.forEach(option => {
+          const opt = document.createElement('option');
+          opt.value = option;
+          opt.textContent = option;
+          select.appendChild(opt);
+        });
+        select.value = name;
+        select.addEventListener('change', () => {
+          const newPath = path.slice(0, depth).concat([select.value]);
+          createSelectorsFromSelection(newPath);
+        });
+        selectorsDiv.appendChild(select);
+        currentSelectors.push(select);
+        node = node[name];
       });
-      return parts.join(">");
-    }
 
-    function findMatchingGenreKey(fullPath) {
-      const parts = fullPath.split(">");
-      while (parts.length > 0) {
-        const testKey = parts.join(">").trim();
-        if (genreMap[testKey]) return genreMap[testKey];
-        parts.pop();
+      if (node && typeof node === 'object') {
+        const select = document.createElement('select');
+        const options = Object.keys(node).sort();
+        options.forEach(option => {
+          const opt = document.createElement('option');
+          opt.value = option;
+          opt.textContent = option;
+          select.appendChild(opt);
+        });
+        select.addEventListener('change', () => {
+          const path = currentSelectors.map(s => s.value).concat([select.value]);
+          createSelectorsFromSelection(path);
+        });
+        selectorsDiv.appendChild(select);
+        currentSelectors.push(select);
       }
-      return null;
-    }
-
-    function loadData() {
-      const genrePath = getSelectedGenrePath();
-      const fileKey = findMatchingGenreKey(genrePath);
-
-      const msg = document.getElementById("error-message");
-
-      console.log("🌿 選択ジャンルパス:", genrePath);
-      console.log("🧩 対応ファイルキー:", fileKey);
-      console.log("🗂 genreMapのキー一覧:", Object.keys(genreMap));
-
-      if (!fileKey) {
-        msg.textContent = "❌ 対応するCSVファイル名が見つかりません：" + genrePath;
-        return;
-      }
-
-      const filename = `./data/${fileKey}_202502.csv`;
-      console.log("📁 読み込もうとしているCSV:", filename);
-      msg.textContent = `📁 読み込み中: ${filename}`;
     }
 
     function createSelectors() {
-      const container = document.getElementById("genre-selectors");
-      container.innerHTML = "";
-
-      let currentNode = genreTree;
-      for (let depth = 0; depth < 5; depth++) {
-        const select = document.createElement("select");
-        select.onchange = () => createSelectorsFromSelection();
-        container.appendChild(select);
-        break;
-      }
-      createSelectorsFromSelection();
+      createSelectorsFromSelection([]);
     }
 
-    function createSelectorsFromSelection() {
-      const container = document.getElementById("genre-selectors");
-      const selectors = container.querySelectorAll("select");
+    function display() {
+      const log = document.getElementById('log');
+      log.innerHTML = '';
+      const path = currentSelectors.map(s => s.value);
+      const start = document.getElementById('startMonth').value;
+      const end = document.getElementById('endMonth').value;
 
-      let currentNode = genreTree;
-      let path = [];
-
-      for (let i = 0; i < selectors.length; i++) {
-        const val = selectors[i].value;
-        path.push(val);
-        currentNode = currentNode[val] || {};
+      const yearMonths = [];
+      const startYM = start.split('-').map(Number);
+      const endYM = end.split('-').map(Number);
+      let y = startYM[0], m = startYM[1];
+      while (y < endYM[0] || (y === endYM[0] && m <= endYM[1])) {
+        yearMonths.push(`${y}${String(m).padStart(2, '0')}`);
+        m++;
+        if (m > 12) { m = 1; y++; }
       }
 
-      const nextDepth = selectors.length;
-      const children = Object.keys(currentNode);
-
-      while (container.children.length > nextDepth) {
-        container.removeChild(container.lastChild);
+      let match = '';
+      for (let i = path.length - 2; i >= 0; i--) {
+        const partial = path.slice(0, i + 1).join('>');
+        if (window.genreMap[partial]) {
+          match = window.genreMap[partial];
+          break;
+        }
       }
 
-      if (children.length > 0) {
-        const nextSelect = document.createElement("select");
-        nextSelect.onchange = () => createSelectorsFromSelection();
-        const optionEmpty = document.createElement("option");
-        optionEmpty.value = "";
-        optionEmpty.textContent = "▼選択";
-        nextSelect.appendChild(optionEmpty);
-
-        children.forEach(child => {
-          const option = document.createElement("option");
-          option.value = child;
-          option.textContent = child;
-          nextSelect.appendChild(option);
-        });
-
-        container.appendChild(nextSelect);
+      if (!match) {
+        log.textContent = '対応するCSVファイルが見つかりません：' + path.join(' > ');
+        return;
       }
+
+      const tasks = yearMonths.map(ym => {
+        const filename = `./data/${match}_${ym}.csv`;
+        return fetch(filename)
+          .then(res => {
+            if (!res.ok) throw new Error(`Not found: ${filename}`);
+            return res.text();
+          })
+          .then(csv => {
+            log.innerHTML += `<div>✅ 読み込み成功: ${filename}</div>`;
+          })
+          .catch(err => {
+            log.innerHTML += `<div>❌ ${err.message}</div>`;
+          });
+      });
+
+      Promise.all(tasks).then(() => {
+        log.innerHTML += '<div>✔️ 完了</div>';
+      });
     }
 
     window.onload = () => {
