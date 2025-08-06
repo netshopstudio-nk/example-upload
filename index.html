@@ -2,140 +2,162 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ジャンル別CSVビューア ver6.3</title>
+  <title>ジャンル別CSVビューア ver6.4</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    select, input, button { margin: 5px; padding: 5px; }
-    .message { margin-top: 20px; white-space: pre-wrap; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    th { background-color: #f0f0f0; }
+    .success { color: green; white-space: pre-line; }
+    .error { color: red; white-space: pre-line; }
   </style>
 </head>
 <body>
-  <h2>ジャンル別CSVビューア ver6.3</h2>
+  <h1>ジャンル別CSVビューア ver6.4</h1>
   <div id="genreSelectors"></div>
-  <label>開始月: <input type="month" id="startMonth"></label>
-  <label>終了月: <input type="month" id="endMonth"></label>
+  <label>開始年月: <input type="month" id="start" value="2022-05"></label>
+  <label>終了年月: <input type="month" id="end" value="2025-09"></label>
   <button onclick="display()">ファイルを確認</button>
-
-  <div class="message" id="errorMessage" style="color: red;"></div>
-  <div class="message" id="successMessage" style="color: green;"></div>
+  <p id="selectedGenrePath"></p>
+  <p class="error" id="errorMessage"></p>
+  <p class="success" id="successMessage"></p>
+  <div id="output"></div>
+  <canvas id="chart" style="max-width: 100%; margin-top: 30px;"></canvas>
 
   <script src="genre_tree_merged.js"></script>
   <script src="genre_map.full.js"></script>
-
   <script>
-    window.onload = () => {
-      if (!window.genreTree) {
-        document.getElementById("errorMessage").innerText = "ジャンルツリーが読み込まれていません。";
-        return;
+window.onload = () => {
+  if (!window.genreTree) return;
+  const container = document.getElementById("genreSelectors");
+  const levels = [];
+
+  function create(level, node) {
+    const select = document.createElement("select");
+    select.dataset.depth = level;
+    select.innerHTML = '<option value="">--選択--</option>';
+    for (const key in node) {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = key;
+      select.appendChild(option);
+    }
+    select.onchange = () => {
+      while (levels.length > level + 1) {
+        container.removeChild(levels.pop());
       }
-      createSelectorsFromTree(window.genreTree);
+      const val = select.value;
+      if (node[val] && typeof node[val] === 'object') {
+        create(level + 1, node[val]);
+      }
     };
+    container.appendChild(select);
+    levels.push(select);
+  }
+  create(0, window.genreTree);
+};
 
-    function createSelectorsFromTree(tree) {
-      const container = document.getElementById("genreSelectors");
-      container.innerHTML = "";
-      const levels = [];
+function getSelectedLabels() {
+  return Array.from(document.querySelectorAll('#genreSelectors select'))
+    .map(s => s.value).filter(Boolean);
+}
 
-      function traverse(node, depth) {
-        const select = document.createElement("select");
-        select.dataset.depth = depth;
-        select.innerHTML = '<option value="">--選択--</option>';
-        for (const key in node) {
-          const opt = document.createElement("option");
-          opt.value = key;
-          opt.textContent = key;
-          select.appendChild(opt);
-        }
-        select.onchange = () => {
-          // 後続セレクト削除
-          while (levels.length > depth + 1) {
-            container.removeChild(levels.pop());
-          }
-          const selected = select.value;
-          const child = node[selected];
-          if (child && Object.keys(child).length > 0) {
-            traverse(child, depth + 1);
-          }
-        };
-        container.appendChild(select);
-        levels[depth] = select;
-      }
+function findCsvKey(labels) {
+  const candidates = [labels.join('>'), labels[labels.length - 1]];
+  for (let i = labels.length - 1; i >= 2; i--) {
+    candidates.push(labels.slice(0, i).join('>'));
+  }
+  for (const key of candidates) {
+    const v = window.genreMap?.[key];
+    if (v) return v;
+  }
+  return null;
+}
 
-      traverse(tree, 0);
+function* monthsBetween(startYM, endYM) {
+  let [sy, sm] = startYM.split('-').map(Number);
+  let [ey, em] = endYM.split('-').map(Number);
+  while (sy < ey || (sy === ey && sm <= em)) {
+    yield `${sy}${String(sm).padStart(2, '0')}`;
+    sm++;
+    if (sm === 13) { sm = 1; sy++; }
+  }
+}
+
+function display() {
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+  const errorDiv = document.getElementById("errorMessage");
+  const successDiv = document.getElementById("successMessage");
+  const output = document.getElementById("output");
+  errorDiv.textContent = "";
+  successDiv.textContent = "";
+  output.innerHTML = "";
+  document.getElementById("chart").style.display = 'none';
+
+  const labels = getSelectedLabels();
+  if (!labels.length || !start || !end || start > end) {
+    errorDiv.textContent = "ジャンルまたは年月を正しく選択してください。";
+    return;
+  }
+
+  const csvKey = findCsvKey(labels);
+  if (!csvKey) {
+    errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + labels.join('>');
+    return;
+  }
+
+  const ym = [...monthsBetween(start, end)][0]; // 単一月のみ対象
+  const url = `data/${csvKey}_${ym}.csv`;
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error("CSV取得失敗");
+      return res.text();
+    })
+    .then(text => {
+      successDiv.textContent = "読み込み成功:\n" + url;
+      renderTableAndChart(text);
+    })
+    .catch(() => {
+      errorDiv.textContent = "CSVファイルが見つかりません: " + url;
+    });
+}
+
+function renderTableAndChart(csvText) {
+  const rows = csvText.trim().split('\n').map(r => r.split(','));
+  const output = document.getElementById("output");
+  const table = document.createElement("table");
+  rows.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    r.forEach(cell => {
+      const el = document.createElement(i === 0 ? "th" : "td");
+      el.textContent = cell;
+      tr.appendChild(el);
+    });
+    table.appendChild(tr);
+  });
+  output.appendChild(table);
+
+  // グラフ表示（1列目: ラベル、2列目: 数値）
+  const labels = rows.slice(1).map(r => r[0]);
+  const values = rows.slice(1).map(r => parseFloat(r[1]) || 0);
+  const ctx = document.getElementById("chart").getContext("2d");
+  document.getElementById("chart").style.display = 'block';
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: rows[0][1],
+        data: values
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: true } }
     }
-
-    function getSelectedLabels() {
-      const selects = document.querySelectorAll("#genreSelectors select");
-      return Array.from(selects).map(s => s.value).filter(Boolean);
-    }
-
-    function monthsBetween(start, end) {
-      const [sy, sm] = start.split("-").map(Number);
-      const [ey, em] = end.split("-").map(Number);
-      const d = new Date(sy, sm - 1);
-      const endDate = new Date(ey, em - 1);
-      const result = [];
-      while (d <= endDate) {
-        result.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
-        d.setMonth(d.getMonth() + 1);
-      }
-      return result;
-    }
-
-    function display() {
-      const start = document.getElementById("startMonth").value;
-      const end = document.getElementById("endMonth").value;
-      const errorDiv = document.getElementById("errorMessage");
-      const successDiv = document.getElementById("successMessage");
-      errorDiv.textContent = "";
-      successDiv.textContent = "";
-
-      if (!start || !end) {
-        errorDiv.textContent = "開始月と終了月を入力してください。";
-        return;
-      }
-      if (start > end) {
-        errorDiv.textContent = "開始月は終了月以前にしてください。";
-        return;
-      }
-
-      const labels = getSelectedLabels();
-      if (labels.length === 0) {
-        errorDiv.textContent = "ジャンルを選択してください。";
-        return;
-      }
-
-      const genrePath = labels.join(">");
-      const lastLabel = labels[labels.length - 1];
-      const csvKey = (window.genreMap && (window.genreMap[genrePath] || window.genreMap[lastLabel])) || null;
-
-      console.log("ジャンルパス:", genrePath);
-      console.log("対応キー:", csvKey);
-
-      if (!csvKey) {
-        errorDiv.textContent = "対応するCSVファイル名が見つかりません: " + genrePath;
-        return;
-      }
-
-      const months = monthsBetween(start, end);
-      const urls = months.map(ym => `data/${csvKey}_${ym}.csv`);
-
-      Promise.allSettled(urls.map(url => fetch(url))).then(results => {
-        const missing = [];
-        const found = [];
-        results.forEach((r, i) => {
-          if (r.status === "fulfilled" && r.value.ok) found.push(urls[i]);
-          else missing.push(urls[i]);
-        });
-
-        if (missing.length > 0) {
-          errorDiv.textContent = "以下のCSVが見つかりません:\n" + missing.join("\n");
-        }
-        if (found.length > 0) {
-          successDiv.textContent = "読み込み成功:\n" + found.join("\n");
-        }
-      });
-    }
+  });
+}
   </script>
 </body>
 </html>
